@@ -208,6 +208,7 @@ main {
   cursor: pointer;
   font-size: 0.85rem;
   transition: all 0.2s ease;
+  color: #808080;
 }
 
 .op-btn:hover {

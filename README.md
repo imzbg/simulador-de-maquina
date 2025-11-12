@@ -1,16 +1,47 @@
-# Simulador de Máquina
-Projeto implementa os requisitos do trabalho de Teoria da Computação:
-- Configuração de memória (1-16), entradas (1-16), saídas (1-16)
-- Registradores R1..Rn (até 16)
-- Funções de entrada/saída por registrador
-- Interpretações de operações por registrador (mín. 4)
-- Interpretações de testes por registrador (mín. 3)
-- Editor de programa rotulado e validador compatível com a máquina criada
-- Simulação passo-a-passo e execução automática com trace
+# Simulador de Maquina com Programa Condicional
 
-## Como usar
-1. Extraia os arquivos e abra `index.html` em um navegador moderno.
-2. Defina a máquina (memória, entradas, saídas, registradores) e personalize cada registrador (funções, ops, testes).
-3. Escreva o programa no editor e clique em **Validar Programa**.
-4. Em Computação, insira os valores na fila de entrada, clique **Reset** e depois **Run** ou **Step**.
-5. Use **Exportar Log** para salvar resultado da execução.
+Ferramenta em HTML/CSS/JS que permite definir uma maquina abstrata baseada em registradores,
+montar um programa condicional simples (goto por rotulo) e observar a execucao passo a passo,
+incluindo exportacao/importacao da configuracao em arquivos locais.
+
+## Principais recursos
+- **Registradores dinamicos**: selecione de 1 a 16 registradores nomeados A..P.
+- **Entradas e saidas**: marque quais registradores servem como fila de entrada e quais guardam a saida final.
+- **Operacoes e testes por registrador**: escolha uma operacao matematica e um teste logico permitido para cada registrador.
+- **Construtor de programa**: defina linhas rotuladas com condicao (`se REG TESTE entao goto X senao goto Y`) e visualize a versao textual automaticamente.
+- **Execucao monitorada**: informe valores de entrada, execute o programa e acompanhe o log detalhado das decisoes.
+- **Exportar/Importar**: salve a maquina (com ou sem o programa) em arquivo `.json` e carregue a mesma configuracao posteriormente.
+
+## Como executar
+1. Baixe ou clone o repositorio.
+2. Abra `index.html` em um navegador moderno (Chrome, Edge ou Firefox recentes).
+3. Nenhuma dependencia adicional e necessária; todo o codigo roda no navegador.
+
+## Fluxo sugerido
+1. **Definir maquina**
+   - Ajuste o numero de registradores.
+   - Clique nos registradores para marca-los como entrada ou saida.
+   - Escolha as operacoes e testes que cada registrador pode usar.
+2. **Salvar/Carregar (opcional)**
+   - Clique em "Salvar maquina (.json)" e escolha se deseja incluir a definicao do programa.
+   - Para restaurar uma configuracao, use "Carregar maquina" e selecione o arquivo salvo.
+3. **Definir programa**
+   - Utilize o construtor visual para adicionar/remover linhas.
+   - A representacao textual e atualizada automaticamente.
+4. **Computar**
+   - Preencha os valores dos registradores de entrada.
+   - Clique em **Computar** para executar e acompanhar o log.
+   - Os valores finais aparecem na seção de saida.
+
+## Estrutura dos arquivos
+- `index.html` – layout principal (definicao da maquina, programa e execucao).
+- `style.css` – estilos, incluindo responsividade e modal de salvamento.
+- `app.js` – logica da aplicacao (estado da maquina, renderizacoes, execucao e IO local).
+
+## Limitacoes e notas
+- O modelo considera somente registradores, sem memoria adicional.
+- Cada linha do programa possui apenas um teste simples e dois destinos possiveis.
+- O limite de passos da execucao é 1000 para evitar loops infinitos.
+- Exportar arquivos requer permissao do navegador; por ser um projeto estatico, o armazenamento e inteiramente local.
+
+Contribuicoes e melhorias sao bem-vindas. Abra um issue ou envie um PR com sugestoes.
