@@ -1,512 +1,660 @@
-// Simulador generico
-// Registradores: R1..Rn, Memoria: M0..M(m-1), Entradas/saidas: filas.
-// Permite configurar operacoes e testes por registrador.
-
-(function(){
-  // Util
-  const $ = id => document.getElementById(id);
-
-  // Default machine model
-  let machine = {
-    memCount: 8,
-    inCount: 4,
-    outCount: 4,
-    regCount: 5,
-    regNames: [],
-    regInputFunc: {},
-    regOutputFunc: {},
-    regOpsAllowed: {},
-    regTestsAllowed: {},
-    opsCatalog: ['INC','DEC','ADD','SUB','MOV','LOAD','STORE','IN','OUT'],
-    testsCatalog: ['=0','>0','<0'],
-    regs: [], mem: [], inputs: [], outputs: [], program: [], labels: {}, ip:0, running:false, timer:null, trace:[]
+(function () {
+  const state = {
+    registers: [],
+    inputRegs: [],
+    outputRegs: [],
+    mathOps: {},
+    logicTests: {},
+    programLines: [
+      { id: 1, label: '1', condReg: 'A', condTest: '= 0', thenGoto: '2', elseGoto: '' }
+    ],
+    inputValues: {},
+    outputValues: {}
   };
 
-  function toSet(value, defaults){
-    if(value instanceof Set) return value;
-    if(Array.isArray(value)) return new Set(value);
-    if(value && typeof value === 'object') return new Set(Object.values(value));
-    return new Set(defaults);
+  const availableMathOps = [
+    'Soma (+)',
+    'Subtracao (-)',
+    'Multiplicacao (*)',
+    'Divisao (/)',
+    'Modulo (%)',
+    'Incremento (++ )',
+    'Decremento (--)'
+  ];
+
+  const availableLogicTests = ['= 0', '> 0', '< 0', '>= 0', '<= 0', '!= 0'];
+
+  const els = {};
+
+  document.addEventListener('DOMContentLoaded', init);
+
+  function init() {
+    Object.assign(els, {
+      numRegisters: document.getElementById('numRegisters'),
+      inputRegisters: document.getElementById('inputRegisters'),
+      outputRegisters: document.getElementById('outputRegisters'),
+      mathOperations: document.getElementById('mathOperations'),
+      logicTests: document.getElementById('logicTests'),
+      machineOutput: document.getElementById('machineOutput'),
+      programLines: document.getElementById('programLines'),
+      programOutput: document.getElementById('programOutput'),
+      inputValues: document.getElementById('inputValues'),
+      outputValues: document.getElementById('outputValues'),
+      computationLog: document.getElementById('computationLog'),
+      addProgramLine: document.getElementById('addProgramLine'),
+      executeProgram: document.getElementById('executeProgram'),
+      saveMachineFile: document.getElementById('saveMachineFile'),
+      loadMachineFile: document.getElementById('loadMachineFile'),
+      machineFileInput: document.getElementById('machineFileInput'),
+      saveModal: document.getElementById('saveModal'),
+      saveMachineOnly: document.getElementById('saveMachineOnly'),
+      saveMachineWithProgram: document.getElementById('saveMachineWithProgram'),
+      cancelSaveModal: document.getElementById('cancelSaveModal')
+    });
+
+    if (!els.numRegisters) return;
+
+    els.numRegisters.addEventListener('change', updateRegisters);
+    els.addProgramLine?.addEventListener('click', addProgramLine);
+    els.executeProgram?.addEventListener('click', executeProgram);
+    els.saveMachineFile?.addEventListener('click', openSaveModal);
+    els.loadMachineFile?.addEventListener('click', () => els.machineFileInput?.click());
+    els.machineFileInput?.addEventListener('change', handleMachineFileSelected);
+    els.saveMachineOnly?.addEventListener('click', () => {
+      saveMachineToFile(false);
+      closeSaveModal();
+    });
+    els.saveMachineWithProgram?.addEventListener('click', () => {
+      saveMachineToFile(true);
+      closeSaveModal();
+    });
+    els.cancelSaveModal?.addEventListener('click', closeSaveModal);
+    els.saveModal?.addEventListener('click', (event) => {
+      if (event.target === els.saveModal) closeSaveModal();
+    });
+    document.addEventListener('keydown', handleModalKey);
+
+    updateRegisters();
+    setLog(['Defina as entradas e clique em Computar para iniciar.']);
   }
 
-  function init(){
-    $('apply-machine').addEventListener('click', applyMachine);
-    $('export-machine').addEventListener('click', renderMachineText);
-    $('save-machine').addEventListener('click', saveMachineLocal);
-    $('load-machine').addEventListener('click', loadMachineLocal);
-    $('validate-program').addEventListener('click', validateProgram);
-    $('save-program').addEventListener('click', saveProgramLocal);
-    $('export-program').addEventListener('click', exportProgramText);
-    $('load-program').addEventListener('click', loadProgramLocal);
-    $('reset').addEventListener('click', resetExecution);
-    $('step').addEventListener('click', stepExecution);
-    $('run').addEventListener('click', startRun);
-    $('stop').addEventListener('click', stopRun);
-    $('export-log').addEventListener('click', exportLog);
-    $('apply-machine').click();
-  }
-
-  function applyMachine(){
-    machine.memCount = Number($('mem-count').value);
-    machine.inCount = Number($('in-count').value);
-    machine.outCount = Number($('out-count').value);
-    machine.regCount = Number($('reg-count').value);
-    machine.regNames = [];
-    for(let i=1;i<=machine.regCount;i++) machine.regNames.push('R'+i);
-
-    machine.regInputConst = machine.regInputConst || {};
-    machine.regOutMem = machine.regOutMem || {};
-
-    // ensure default per-register configs exist
-    for(let r of machine.regNames){
-      machine.regInputFunc[r] = machine.regInputFunc[r] || 'queue'; // default read from queue
-      machine.regOutputFunc[r] = machine.regOutputFunc[r] || 'none';
-      machine.regOpsAllowed[r] = toSet(machine.regOpsAllowed[r], machine.opsCatalog);
-      machine.regTestsAllowed[r] = toSet(machine.regTestsAllowed[r], machine.testsCatalog);
+  function openSaveModal() {
+    if (!els.saveModal) {
+      saveMachineToFile(false);
+      return;
     }
-
-    // initialize runtime state
-    machine.regs = new Array(machine.regCount).fill(0);
-    machine.mem = new Array(machine.memCount).fill(0);
-    machine.inputs = new Array(machine.inCount).fill(0);
-    machine.outputs = [];
-    machine.program = [];
-    machine.labels = {};
-    machine.ip = 0;
-    machine.trace = [];
-    machine.running=false;
-    stopRun();
-
-    renderRegConfig();
-    renderIOInputs();
-    renderState();
-    renderMachineText();
+    els.saveModal.classList.add('show');
+    els.saveModal.setAttribute('aria-hidden', 'false');
   }
 
-  // Render per-register configuration UI
-  function renderRegConfig(){
-    const area = $('reg-list'); area.innerHTML='';
-    for(let i=0;i<machine.regCount;i++){
-      const r = machine.regNames[i];
-      const div = document.createElement('div'); div.className='reg-config';
-      const opsAllowed = toSet(machine.regOpsAllowed[r], machine.opsCatalog);
-      machine.regOpsAllowed[r] = opsAllowed;
-      const testsAllowed = toSet(machine.regTestsAllowed[r], machine.testsCatalog);
-      machine.regTestsAllowed[r] = testsAllowed;
-      div.innerHTML = `<strong>${r}</strong>
-        <label>Funcao de entrada:
-          <select data-reg="${r}" class="reg-in-func">
-            <option value="none">nenhuma</option>
-            <option value="queue">ler da fila de entradas</option>
-            <option value="const">valor constante</option>
-          </select>
-          <input type="number" class="reg-in-const" placeholder="const (se const)" style="display:none">
-        </label>
-        <label>Funcao de saida:
-          <select data-reg="${r}" class="reg-out-func">
-            <option value="none">nenhuma</option>
-            <option value="push">empurrar para fila de saidas</option>
-            <option value="mem">escrever em memoria (especificar indice)</option>
-          </select>
-          <input type="number" class="reg-out-mem" placeholder="M index (se mem)" style="display:none">
-        </label>
-        <label>Operacoes permitidas (min.4):</label>
-        <div class="ops-checkboxes"></div>
-        <label>Testes permitidos (min.3):</label>
-        <div class="tests-checkboxes"></div>
-      `;
-      area.appendChild(div);
+  function closeSaveModal() {
+    if (!els.saveModal) return;
+    els.saveModal.classList.remove('show');
+    els.saveModal.setAttribute('aria-hidden', 'true');
+  }
 
-      // populate selects and checkboxes with current values
-      const inSel = div.querySelector('.reg-in-func');
-      const outSel = div.querySelector('.reg-out-func');
-      const inConst = div.querySelector('.reg-in-const');
-      const outMem = div.querySelector('.reg-out-mem');
-
-      inSel.value = machine.regInputFunc[r] || 'queue';
-      outSel.value = machine.regOutputFunc[r] || 'none';
-      if(inSel.value==='const') inConst.style.display='inline-block';
-      if(outSel.value==='mem') outMem.style.display='inline-block';
-      inSel.addEventListener('change', (e)=>{ machine.regInputFunc[r]=e.target.value; inConst.style.display = e.target.value==='const' ? 'inline-block' : 'none'; });
-      outSel.addEventListener('change', (e)=>{ machine.regOutputFunc[r]=e.target.value; outMem.style.display = e.target.value==='mem' ? 'inline-block' : 'none'; });
-
-      inConst.addEventListener('input', (e)=>{ machine.regInputConst = machine.regInputConst || {}; machine.regInputConst[r] = Number(e.target.value||0); });
-      outMem.addEventListener('input', (e)=>{ machine.regOutMem = machine.regOutMem || {}; machine.regOutMem[r] = Number(e.target.value||0); });
-
-      // ops checkboxes
-      const opsArea = div.querySelector('.ops-checkboxes');
-      opsArea.innerHTML='';
-      for(let op of machine.opsCatalog){
-        const cb = document.createElement('label');
-        cb.style.marginRight='6px';
-        const checked = opsAllowed.has(op) ? 'checked' : '';
-        cb.innerHTML = `<input type="checkbox" data-op="${op}" ${checked}> ${op}`;
-        opsArea.appendChild(cb);
-        cb.querySelector('input').addEventListener('change', (e)=>{
-          if(e.target.checked) opsAllowed.add(op); else opsAllowed.delete(op);
-        });
-      }
-      // tests checkboxes
-      const testsArea = div.querySelector('.tests-checkboxes');
-      testsArea.innerHTML='';
-      for(let t of machine.testsCatalog){
-        const cb = document.createElement('label');
-        cb.style.marginRight='6px';
-        const checked = testsAllowed.has(t) ? 'checked' : '';
-        cb.innerHTML = `<input type="checkbox" data-test="${t}" ${checked}> ${t}`;
-        testsArea.appendChild(cb);
-        cb.querySelector('input').addEventListener('change', (e)=>{
-          if(e.target.checked) testsAllowed.add(t); else testsAllowed.delete(t);
-        });
-      }
+  function handleModalKey(event) {
+    if (event.key === 'Escape' && els.saveModal?.classList.contains('show')) {
+      closeSaveModal();
     }
   }
 
-  function renderIOInputs(){
-    const area = $('inputs-area'); area.innerHTML='';
-    for(let i=0;i<machine.inCount;i++){
-      const div = document.createElement('div'); div.className='state-cell';
-      div.innerHTML = `In[${i}]: <input data-in="${i}" type="number" value="0">`;
-      area.appendChild(div);
-    }
-    const outs = $('outputs-area'); outs.innerHTML='';
-    for(let i=0;i<machine.outCount;i++){ const d=document.createElement('div'); d.className='state-cell'; d.id='out-'+i; d.textContent='Out['+i+']: '; outs.appendChild(d); }
+  function generateRegisterNames(total) {
+    return Array.from({ length: total }, (_, idx) => String.fromCharCode(65 + idx));
   }
 
-  function renderState(){
-    const regsArea = $('regs-area'); regsArea.innerHTML='';
-    for(let i=0;i<machine.regCount;i++){
-      const cell = document.createElement('div'); cell.className='state-cell'; cell.id='reg-'+i;
-      cell.innerHTML = `<strong>${machine.regNames[i]}</strong><div>${machine.regs[i]}</div>`;
-      regsArea.appendChild(cell);
-    }
-    const memArea = $('mem-area'); memArea.innerHTML='';
-    for(let i=0;i<machine.memCount;i++){
-      const cell = document.createElement('div'); cell.className='state-cell'; cell.id='mem-'+i;
-      cell.innerHTML = `M[${i}]<div>${machine.mem[i]}</div>`;
-      memArea.appendChild(cell);
-    }
-    $('trace').textContent = machine.trace.join('\\n');
-    // outputs
-    for(let i=0;i<machine.outCount;i++){
-      const el = $('out-'+i);
-      if(el) el.textContent = 'Out['+i+']: ' + (machine.outputs[i]!==undefined ? machine.outputs[i] : '');
-    }
+  function updateRegisters() {
+    const raw = Number(els.numRegisters.value);
+    const clamped = Number.isFinite(raw) ? Math.min(16, Math.max(1, raw)) : 1;
+    if (clamped !== raw) els.numRegisters.value = clamped;
+
+    state.registers = generateRegisterNames(clamped);
+    state.inputRegs = filterValidRegs(state.inputRegs);
+    state.outputRegs = filterValidRegs(state.outputRegs);
+    state.mathOps = filterRecord(state.mathOps);
+    state.logicTests = filterRecord(state.logicTests);
+    state.programLines = state.programLines.map((line) => ({
+      ...line,
+      condReg: state.registers.includes(line.condReg) ? line.condReg : state.registers[0] || ''
+    }));
+    syncOutputValues();
+
+    renderInputRegisters();
+    renderOutputRegisters();
+    renderMathOperations();
+    renderLogicTests();
+    renderProgramLines();
+    renderInputValues();
+    renderOutputValues();
+    updateMachineOutput();
+    updateProgramOutput();
   }
 
-  function renderMachineText(){
-    const s = [];
-    s.push('Maquina = (M, I, O, R, F_in, F_out, Op, Testes)');
-    s.push('M (memorias): ' + machine.memCount);
-    s.push('I (tamanho da fila de entrada): ' + machine.inCount);
-    s.push('O (tamanho da fila de saida): ' + machine.outCount);
-    s.push('R (registradores): ' + machine.regCount + ' -> ' + machine.regNames.join(', '));
-    s.push('Funcoes de entrada por registrador:');
-    for(let r of machine.regNames) s.push('  ' + r + ': ' + (machine.regInputFunc[r] || 'none') + (machine.regInputConst && machine.regInputConst[r]!==undefined ? (' (const='+machine.regInputConst[r]+')') : ''));
-    s.push('Funcoes de saida por registrador:');
-    for(let r of machine.regNames) s.push('  ' + r + ': ' + (machine.regOutputFunc[r] || 'none') + (machine.regOutMem && machine.regOutMem[r]!==undefined ? (' (M='+machine.regOutMem[r]+')') : ''));
-    s.push('Operadores permitidos por registrador:');
-    for(let r of machine.regNames) s.push('  ' + r + ': ' + Array.from(machine.regOpsAllowed[r]).join(', '));
-    s.push('Testes permitidos por registrador:');
-    for(let r of machine.regNames) s.push('  ' + r + ': ' + Array.from(machine.regTestsAllowed[r]).join(', '));
-    $('machine-text').textContent = s.join('\\n');
-    return s.join('\\n');
+  function filterValidRegs(list) {
+    return list.filter((reg) => state.registers.includes(reg));
   }
 
-  // Program parsing/validation
-  function parseProgram(text){
-    const lines = text.split('\\n').map(l=>l.trim()).filter(l=>l && !l.startsWith('//'));
-    const prog = []; const labels = {};
-    for(let i=0;i<lines.length;i++){
-      let raw = lines[i];
-      let label = null;
-      if(raw.includes(':')){
-        const parts = raw.split(':');
-        label = parts.shift().trim();
-        raw = parts.join(':').trim();
-      }
-      const parts = raw.split(/\s+/);
-      const op = parts[0].toUpperCase();
-      const args = parts.slice(1);
-      prog.push({label, raw, op, args, lineNo: i+1});
-      if(label) labels[label]=prog.length-1;
-    }
-    return {prog, labels};
+  function filterRecord(record) {
+    const next = {};
+    state.registers.forEach((reg) => {
+      if (record[reg]) next[reg] = record[reg];
+    });
+    return next;
   }
 
-  function regAllowsOp(regName, op){
-    const ops = machine.regOpsAllowed[regName];
-    if(!ops) return false;
-    if(ops instanceof Set) return ops.has(op);
-    if(Array.isArray(ops)) return ops.includes(op);
-    return false;
+  function syncOutputValues() {
+    const next = {};
+    state.outputRegs.forEach((reg) => {
+      if (state.outputValues[reg] !== undefined) next[reg] = state.outputValues[reg];
+    });
+    state.outputValues = next;
   }
 
-  function regAllowsTest(regName, test){
-    const tests = machine.regTestsAllowed[regName];
-    if(!tests) return false;
-    if(tests instanceof Set) return tests.has(test);
-    if(Array.isArray(tests)) return tests.includes(test);
-    return false;
+  function renderInputRegisters() {
+    if (!els.inputRegisters) return;
+    els.inputRegisters.innerHTML = '';
+    state.registers.forEach((reg) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'register-btn' + (state.inputRegs.includes(reg) ? ' selected-input' : '');
+      btn.textContent = reg;
+      btn.addEventListener('click', () => toggleInputReg(reg));
+      els.inputRegisters.appendChild(btn);
+    });
   }
 
-  function validateProgram(){
-    const text = $('program-code').value;
-    const {prog, labels} = parseProgram(text);
-    let ok = true; const errors = [];
-    const ops = new Set(['IN','OUT','MOV','LOAD','STORE','INC','DEC','ADD','SUB','JUMP','JZ','JNZ','HALT']);
-    for(let i=0;i<prog.length;i++){
-      const ins = prog[i];
-      if(!ops.has(ins.op)){ errors.push(`Linha ${ins.lineNo}: op desconhecida "${ins.op}"`); ok=false; continue; }
-      // arg checks
-      if(ins.op==='IN' || ins.op==='OUT' || ins.op==='INC' || ins.op==='DEC' || ins.op==='HALT'){
-        if(ins.op!=='HALT' && ins.args.length!==1){ errors.push(`Linha ${ins.lineNo}: ${ins.op} precisa 1 argumento`); ok=false; }
-      }
-      if(ins.op==='MOV' || ins.op==='ADD' || ins.op==='SUB'){
-        if(ins.args.length!==2){ errors.push(`Linha ${ins.lineNo}: ${ins.op} precisa 2 argumentos`); ok=false; }
-      }
-      if(ins.op==='LOAD' || ins.op==='STORE'){
-        if(ins.args.length!==2){ errors.push(`Linha ${ins.lineNo}: ${ins.op} precisa 2 argumentos`); ok=false; }
-      }
-      if((ins.op==='JUMP' && ins.args.length!==1) || ((ins.op==='JZ' || ins.op==='JNZ') && ins.args.length!==2)){
-        errors.push(`Linha ${ins.lineNo}: args incorretos para ${ins.op}`); ok=false;
-      }
-      if(ins.op==='JUMP'){
-        const lbl = ins.args[0];
-        if(lbl && !labels.hasOwnProperty(lbl)){ errors.push(`Linha ${ins.lineNo}: label '${lbl}' nao definida`); ok=false; }
-      }
-      // check registers used are within configured range and allowed ops/tests
-      const regTok = token => {
-        if(!regTok) return null;
-        regTok = regTok.toUpperCase();
-        if(regTok.startsWith('R')){
-          const idx = Number(regTok.slice(1));
-          if(Number.isNaN(idx) || idx<1 || idx>machine.regCount) return null;
-          return 'R'+idx;
-        }
-        return null;
-      };
-      // check op permission on registers used
-      if(['IN','OUT','INC','DEC'].includes(ins.op)){
-        const r = regTok(ins.args[0]);
-        if(!r){ errors.push(`Linha ${ins.lineNo}: registrador invalido ${ins.args[0]}`); ok=false; }
-        else if(!regAllowsOp(r, ins.op)){ errors.push(`Linha ${ins.lineNo}: operacao ${ins.op} nao permitida no ${r}`); ok=false; }
-      }
-      if(['MOV','ADD','SUB'].includes(ins.op)){
-        const rsrc = regTok(ins.args[0]);
-        const rdst = regTok(ins.args[1]);
-        if(!rsrc || !rdst){ errors.push(`Linha ${ins.lineNo}: registrador invalido em ${ins.raw}`); ok=false; }
-        else if(!regAllowsOp(rdst, ins.op)){ errors.push(`Linha ${ins.lineNo}: operacao ${ins.op} nao permitida no destino ${rdst}`); ok=false; }
-      }
-      if(ins.op==='LOAD'){
-        // args: Mx Rn
-        const mem = ins.args[0].toUpperCase();
-        const m = mem.startsWith('M') ? Number(mem.slice(1)) : NaN;
-        const r = regTok(ins.args[1]);
-        if(Number.isNaN(m) || m<0 || m>=machine.memCount){ errors.push(`Linha ${ins.lineNo}: indice de memoria invalido ${ins.args[0]}`); ok=false; }
-        if(!r){ errors.push(`Linha ${ins.lineNo}: registrador invalido ${ins.args[1]}`); ok=false; }
-        else if(!regAllowsOp(r, 'LOAD')){ errors.push(`Linha ${ins.lineNo}: operacao LOAD nao permitida no ${r}`); ok=false; }
-      }
-      if(ins.op==='STORE'){
-        const r = regTok(ins.args[0]); const mem = ins.args[1].toUpperCase(); const m = mem.startsWith('M') ? Number(mem.slice(1)) : NaN;
-        if(!r){ errors.push(`Linha ${ins.lineNo}: registrador invalido ${ins.args[0]}`); ok=false; }
-        else if(!regAllowsOp(r, 'STORE')){ errors.push(`Linha ${ins.lineNo}: operacao STORE nao permitida no ${r}`); ok=false; }
-        if(Number.isNaN(m) || m<0 || m>=machine.memCount){ errors.push(`Linha ${ins.lineNo}: indice de memoria invalido ${ins.args[1]}`); ok=false; }
-      }
-      if(ins.op==='JZ' || ins.op==='JNZ'){
-        const r = regTok(ins.args[0]); const lbl = ins.args[1];
-        if(!r){ errors.push(`Linha ${ins.lineNo}: registrador invalido ${ins.args[0]}`); ok=false; }
-        else {
-          const needed = '=0';
-          if(!regAllowsTest(r, needed)){ errors.push(`Linha ${ins.lineNo}: teste ${needed} nao permitido no ${r}`); ok=false; }
-        }
-        if(lbl && !labels.hasOwnProperty(lbl)){ errors.push(`Linha ${ins.lineNo}: label '${lbl}' nao definida`); ok=false; }
-      }
-    }
-    const msg = ok ? 'Validacao OK. Programa compativel com a maquina.' : ('Erros:\n' + errors.join('\n'));
-    $('program-validate').textContent = msg;
-    if(ok){ const parsed = parseProgram(text); machine.program = parsed.prog; machine.labels = parsed.labels; }
-    return ok;
+  function renderOutputRegisters() {
+    if (!els.outputRegisters) return;
+    els.outputRegisters.innerHTML = '';
+    state.registers.forEach((reg) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'register-btn' + (state.outputRegs.includes(reg) ? ' selected-output' : '');
+      btn.textContent = reg;
+      btn.addEventListener('click', () => toggleOutputReg(reg));
+      els.outputRegisters.appendChild(btn);
+    });
   }
 
-  // Program save/load local (localStorage)
-  function saveMachineLocal(){ localStorage.setItem('sim_machine', JSON.stringify({
-    memCount:machine.memCount, inCount:machine.inCount, outCount:machine.outCount, regCount:machine.regCount,
-    regInputFunc:machine.regInputFunc, regOutputFunc:machine.regOutputFunc,
-    regOpsAllowed: Object.fromEntries(Object.entries(machine.regOpsAllowed).map(([k,s])=>[k,Array.from(s)])),
-    regTestsAllowed: Object.fromEntries(Object.entries(machine.regTestsAllowed).map(([k,s])=>[k,Array.from(s)]))
-  })); alert('Maquina salva no armazenamento local do navegador.'); }
-
-  function loadMachineLocal(){
-    const s = localStorage.getItem('sim_machine'); if(!s){ alert('Nenhuma maquina salva localmente.'); return; }
-    const obj = JSON.parse(s);
-    machine.memCount = obj.memCount; machine.inCount = obj.inCount; machine.outCount = obj.outCount; machine.regCount = obj.regCount;
-    machine.regInputFunc = obj.regInputFunc || machine.regInputFunc; machine.regOutputFunc = obj.regOutputFunc || machine.regOutputFunc;
-    machine.regOpsAllowed = {}; machine.regTestsAllowed = {};
-    for(let k in obj.regOpsAllowed) machine.regOpsAllowed[k]=new Set(obj.regOpsAllowed[k]);
-    for(let k in obj.regTestsAllowed) machine.regTestsAllowed[k]=new Set(obj.regTestsAllowed[k]);
-    $('mem-count').value = machine.memCount; $('in-count').value = machine.inCount; $('out-count').value = machine.outCount; $('reg-count').value = machine.regCount;
-    applyMachine();
-    alert('Maquina carregada do armazenamento local.');
-  }
-
-  function saveProgramLocal(){ localStorage.setItem('sim_program', $('program-code').value); alert('Programa salvo localmente.'); }
-  function loadProgramLocal(){ const p = localStorage.getItem('sim_program'); if(p){ $('program-code').value = p; alert('Programa carregado.'); } else alert('Nenhum programa salvo localmente.'); }
-  function exportProgramText(){ const txt = $('program-code').value; const blob = new Blob([txt], {type:'text/plain'}); const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='program.txt'; a.click(); URL.revokeObjectURL(url); }
-  function exportLog(){ const data = {machine:renderMachineText(), program:$('program-code').value, trace:machine.trace, regs:machine.regs, mem:machine.mem, outputs:machine.outputs}; const blob = new Blob([JSON.stringify(data,null,2)],{type:'application/json'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='execution_log.json'; a.click(); URL.revokeObjectURL(url); }
-
-  // Execution engine (step/continuous)
-  function resetExecution(){
-    // read input values
-    machine.inputs = [];
-    for(let i=0;i<machine.inCount;i++){
-      const el = document.querySelector('[data-in="'+i+'"]');
-      machine.inputs.push(Number(el ? el.value : 0) || 0);
-    }
-    machine.outputs = [];
-    machine.regs = new Array(machine.regCount).fill(0);
-    machine.mem = new Array(machine.memCount).fill(0);
-    machine.ip = 0; machine.trace = []; machine.running=false; stopRun();
-    renderState();
-  }
-
-  function stepExecution(){
-    if(!machine.program || machine.program.length===0){
-      if(!validateProgram()) return;
-      resetExecution();
-    }
-    if(machine.ip<0 || machine.ip>=machine.program.length){ machine.trace.push('IP fora do alcance  HALT'); renderState(); return; }
-    const ins = machine.program[machine.ip];
-    machine.trace.push('[ip='+machine.ip+'] ' + (ins.label?ins.label+': ':'') + ins.raw);
-    executeInstruction(ins);
-    renderState();
-  }
-
-  function tokenReg(tok){
-    if(!tok) return null; tok = tok.toUpperCase();
-    if(tok.startsWith('R')){ const idx=Number(tok.slice(1)); if(!Number.isNaN(idx) && idx>=1 && idx<=machine.regCount) return 'R'+idx; }
-    return null;
-  }
-  function tokenMem(tok){
-    if(!tok) return null; tok = tok.toUpperCase();
-    if(tok.startsWith('M')){ const idx=Number(tok.slice(1)); if(!Number.isNaN(idx) && idx>=0 && idx<machine.memCount) return Number(idx); }
-    return null;
-  }
-
-  function executeInstruction(ins){
-    const op = ins.op; const a = ins.args || [];
-    function regIndexTok(t){ return tokenReg(t) ? Number(t.slice(1))-1 : null; }
-    function memIndexTok(t){ return tokenMem(t); }
-
-    if(op==='IN'){
-      const ri = regIndexTok(a[0]);
-      if(ri===null){ machine.ip++; return; }
-      const rname = machine.regNames[ri];
-      // only if reg input func allows queue
-      if(machine.regInputFunc[rname]==='queue'){
-        const val = machine.inputs.length>0 ? machine.inputs.shift() : 0;
-        machine.regs[ri]=val;
-      } else if(machine.regInputFunc[rname]==='const'){
-        machine.regs[ri] = (machine.regInputConst && machine.regInputConst[rname]!==undefined) ? machine.regInputConst[rname] : 0;
-      }
-      machine.ip++;
-    } else if(op==='OUT'){
-      const ri = regIndexTok(a[0]);
-      if(ri===null){ machine.ip++; return; }
-      const rname = machine.regNames[ri];
-      const val = machine.regs[ri] || 0;
-      if(machine.regOutputFunc[rname]==='push'){
-        machine.outputs.push(val);
-      } else if(machine.regOutputFunc[rname]==='mem'){
-        const mindex = (machine.regOutMem && machine.regOutMem[rname]!==undefined) ? machine.regOutMem[rname] : null;
-        if(mindex!==null && mindex>=0 && mindex<machine.memCount) machine.mem[mindex]=val;
-      }
-      machine.ip++;
-    } else if(op==='MOV'){
-      const r1 = regIndexTok(a[0]), r2 = regIndexTok(a[1]);
-      if(r1!==null && r2!==null) machine.regs[r2]=machine.regs[r1];
-      machine.ip++;
-    } else if(op==='LOAD'){
-      const m = memIndexTok(a[0]), r = regIndexTok(a[1]);
-      if(m!==null && r!==null) machine.regs[r]=machine.mem[m];
-      machine.ip++;
-    } else if(op==='STORE'){
-      const r = regIndexTok(a[0]), m = memIndexTok(a[1]);
-      if(m!==null && r!==null) machine.mem[m]=machine.regs[r];
-      machine.ip++;
-    } else if(op==='INC'){
-      const r = regIndexTok(a[0]); if(r!==null) machine.regs[r]=Number(machine.regs[r]||0)+1; machine.ip++;
-    } else if(op==='DEC'){
-      const r = regIndexTok(a[0]); if(r!==null) machine.regs[r]=Number(machine.regs[r]||0)-1; machine.ip++;
-    } else if(op==='ADD' || op==='SUB'){
-      const r1=regIndexTok(a[0]), r2=regIndexTok(a[1]);
-      if(r1!==null && r2!==null){
-        if(op==='ADD') machine.regs[r2]=Number(machine.regs[r2]||0) + Number(machine.regs[r1]||0);
-        else machine.regs[r2]=Number(machine.regs[r2]||0) - Number(machine.regs[r1]||0);
-      }
-      machine.ip++;
-    } else if(op==='JUMP'){
-      const lbl = a[0]; if(machine.labels.hasOwnProperty(lbl)) machine.ip = machine.labels[lbl]; else machine.ip++;
-    } else if(op==='JZ' || op==='JNZ'){
-      const r = regIndexTok(a[0]); const lbl = a[1]; const val = (r!==null? Number(machine.regs[r]||0):0);
-      const cond = (op==='JZ' ? (val===0) : (val!==0));
-      if(cond && machine.labels.hasOwnProperty(lbl)) machine.ip = machine.labels[lbl]; else machine.ip++;
-    } else if(op==='HALT'){
-      machine.trace.push('HALT'); machine.running=false; stopRun();
+  function toggleInputReg(reg) {
+    const idx = state.inputRegs.indexOf(reg);
+    if (idx >= 0) {
+      state.inputRegs.splice(idx, 1);
     } else {
-      machine.ip++;
+      state.inputRegs.push(reg);
+      state.inputRegs = sortLikeRegisters(state.inputRegs);
+    }
+    renderInputRegisters();
+    renderInputValues();
+    updateMachineOutput();
+  }
+
+  function toggleOutputReg(reg) {
+    const idx = state.outputRegs.indexOf(reg);
+    if (idx >= 0) {
+      state.outputRegs.splice(idx, 1);
+    } else {
+      state.outputRegs.push(reg);
+      state.outputRegs = sortLikeRegisters(state.outputRegs);
+    }
+    syncOutputValues();
+    renderOutputRegisters();
+    renderOutputValues();
+    updateMachineOutput();
+  }
+
+  function sortLikeRegisters(list) {
+    return list.sort((a, b) => state.registers.indexOf(a) - state.registers.indexOf(b));
+  }
+
+  function renderMathOperations() {
+    if (!els.mathOperations) return;
+    els.mathOperations.innerHTML = '';
+    state.registers.forEach((reg) => {
+      const row = document.createElement('div');
+      row.className = 'register-row';
+      const label = document.createElement('strong');
+      label.textContent = `${reg}`;
+      row.appendChild(label);
+
+      const grid = document.createElement('div');
+      grid.className = 'ops-grid';
+
+      availableMathOps.forEach((op) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'op-btn' + (state.mathOps[reg] === op ? ' selected' : '');
+        btn.textContent = op;
+        btn.addEventListener('click', () => toggleMathOp(reg, op));
+        grid.appendChild(btn);
+      });
+
+      row.appendChild(grid);
+      els.mathOperations.appendChild(row);
+    });
+  }
+
+  function renderLogicTests() {
+    if (!els.logicTests) return;
+    els.logicTests.innerHTML = '';
+    state.registers.forEach((reg) => {
+      const row = document.createElement('div');
+      row.className = 'register-row';
+      const label = document.createElement('strong');
+      label.textContent = `${reg}`;
+      row.appendChild(label);
+
+      const grid = document.createElement('div');
+      grid.className = 'ops-grid';
+
+      availableLogicTests.forEach((test) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'op-btn test-btn' + (state.logicTests[reg] === test ? ' selected' : '');
+        btn.textContent = test;
+        btn.addEventListener('click', () => toggleLogicTest(reg, test));
+        grid.appendChild(btn);
+      });
+
+      row.appendChild(grid);
+      els.logicTests.appendChild(row);
+    });
+  }
+
+  function toggleMathOp(reg, op) {
+    if (state.mathOps[reg] === op) delete state.mathOps[reg];
+    else state.mathOps[reg] = op;
+    renderMathOperations();
+    updateMachineOutput();
+  }
+
+  function toggleLogicTest(reg, test) {
+    if (state.logicTests[reg] === test) delete state.logicTests[reg];
+    else state.logicTests[reg] = test;
+    renderLogicTests();
+    updateMachineOutput();
+  }
+
+  function updateMachineOutput() {
+    if (!els.machineOutput) return;
+    const lines = [];
+    lines.push('DEFINICAO DA MAQUINA');
+    lines.push('='.repeat(50));
+    lines.push('');
+    lines.push(`Registradores (${state.registers.length}): ${state.registers.join(', ') || '-'}`);
+    lines.push(`Entradas: ${state.inputRegs.join(', ') || 'nenhuma'}`);
+    lines.push(`Saidas: ${state.outputRegs.join(', ') || 'nenhuma'}`);
+    lines.push('');
+    lines.push('Operacoes:');
+    if (Object.keys(state.mathOps).length === 0) {
+      lines.push('  (sem operacoes atribuidas)');
+    } else {
+      Object.entries(state.mathOps).forEach(([reg, op]) => lines.push(`  ${reg}: ${op}`));
+    }
+    lines.push('');
+    lines.push('Testes:');
+    if (Object.keys(state.logicTests).length === 0) {
+      lines.push('  (sem testes atribuidos)');
+    } else {
+      Object.entries(state.logicTests).forEach(([reg, test]) => lines.push(`  ${reg}: ${test}`));
+    }
+    els.machineOutput.textContent = lines.join('\n');
+  }
+
+  function renderProgramLines() {
+    if (!els.programLines) return;
+    els.programLines.innerHTML = '';
+    if (state.programLines.length === 0) {
+      const empty = document.createElement('p');
+      empty.className = 'helper-text';
+      empty.textContent = 'Nenhuma linha cadastrada. Adicione uma linha para iniciar o programa.';
+      els.programLines.appendChild(empty);
+      return;
+    }
+
+    state.programLines.forEach((line, index) => {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'program-line';
+
+      wrapper.appendChild(createInput(line.label, (value) => updateProgramLine(index, 'label', value), { width: '60px' }));
+      wrapper.appendChild(createSpan(': se'));
+      wrapper.appendChild(createSelect(state.registers, line.condReg, (value) => updateProgramLine(index, 'condReg', value)));
+      wrapper.appendChild(createSelect(availableLogicTests, line.condTest, (value) => updateProgramLine(index, 'condTest', value)));
+      wrapper.appendChild(createSpan('entao vá para'));
+      wrapper.appendChild(createInput(line.thenGoto, (value) => updateProgramLine(index, 'thenGoto', value)));
+      wrapper.appendChild(createSpan('senao vá para'));
+      wrapper.appendChild(createInput(line.elseGoto, (value) => updateProgramLine(index, 'elseGoto', value)));
+
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'remove-line';
+      removeBtn.textContent = 'Remover';
+      removeBtn.addEventListener('click', () => removeProgramLine(index));
+      wrapper.appendChild(removeBtn);
+
+      els.programLines.appendChild(wrapper);
+    });
+  }
+
+  function createInput(value, handler, style = {}) {
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = value || '';
+    Object.assign(input.style, style);
+    input.addEventListener('input', (e) => handler(e.target.value.trim()));
+    return input;
+  }
+
+  function createSpan(text) {
+    const span = document.createElement('span');
+    span.textContent = text;
+    return span;
+  }
+
+  function createSelect(options, current, handler) {
+    const select = document.createElement('select');
+    options.forEach((opt) => {
+      const option = document.createElement('option');
+      option.value = opt;
+      option.textContent = opt;
+      if (opt === current) option.selected = true;
+      select.appendChild(option);
+    });
+    select.addEventListener('change', (e) => handler(e.target.value));
+    return select;
+  }
+
+  function addProgramLine() {
+    const newId =
+      state.programLines.reduce((max, line) => Math.max(max, Number(line.id) || 0), 0) + 1;
+    state.programLines.push({
+      id: newId,
+      label: String(newId),
+      condReg: state.registers[0] || '',
+      condTest: '= 0',
+      thenGoto: '',
+      elseGoto: ''
+    });
+    renderProgramLines();
+    updateProgramOutput();
+  }
+
+  function removeProgramLine(index) {
+    state.programLines.splice(index, 1);
+    renderProgramLines();
+    updateProgramOutput();
+  }
+
+  function updateProgramLine(index, field, value) {
+    state.programLines[index][field] = value;
+    updateProgramOutput();
+  }
+
+  function updateProgramOutput() {
+    if (!els.programOutput) return;
+    els.programOutput.textContent = getProgramText();
+  }
+
+  function getProgramText() {
+    const lines = [];
+    lines.push('DEFINICAO DO PROGRAMA');
+    lines.push('='.repeat(50));
+    lines.push('');
+    state.programLines.forEach((line) => {
+      lines.push(
+        `${line.label || '?'}: se ${line.condReg || '-'} ${line.condTest} entao vá para ${line.thenGoto ||
+          '-'} senao vá para ${line.elseGoto || '-'}`
+      );
+    });
+    return lines.join('\n');
+  }
+
+  function buildMachineSnapshot(includeProgram = false) {
+    const snapshot = {
+      schema: 'machine-config-v1',
+      regCount: state.registers.length,
+      inputRegs: [...state.inputRegs],
+      outputRegs: [...state.outputRegs],
+      mathOps: { ...state.mathOps },
+      logicTests: { ...state.logicTests },
+      createdAt: new Date().toISOString()
+    };
+    if (includeProgram) {
+      snapshot.program = buildProgramSnapshot();
+    }
+    return snapshot;
+  }
+
+  function buildProgramSnapshot() {
+    return {
+      lines: state.programLines.map((line, index) => ({
+        id: line.id ?? index + 1,
+        label: line.label || String(line.id ?? index + 1),
+        condReg: line.condReg || '',
+        condTest: line.condTest || '= 0',
+        thenGoto: line.thenGoto || '',
+        elseGoto: line.elseGoto || ''
+      })),
+      text: getProgramText(),
+      updatedAt: new Date().toISOString()
+    };
+  }
+
+  function saveMachineToFile(includeProgram = false) {
+    try {
+      const snapshot = buildMachineSnapshot(includeProgram);
+      const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = includeProgram ? 'maquina_programa.json' : 'maquina.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      alert('Nao foi possivel salvar a maquina: ' + error.message);
     }
   }
 
-  function startRun(){
-    if(machine.running) return;
-    if(!validateProgram()) return;
-    resetExecution();
-    machine.running=true;
-    const delay = Number($('run-delay').value) || 300;
-    machine.timer = setInterval(()=>{
-      if(!machine.running) return;
-      if(machine.ip<0 || machine.ip>=machine.program.length){ machine.trace.push('IP out of range  stopping'); machine.running=false; stopRun(); renderState(); return; }
-      stepExecution();
-    }, delay);
-  }
-  function stopRun(){ machine.running=false; if(machine.timer){ clearInterval(machine.timer); machine.timer=null; } }
+  function handleMachineFileSelected(event) {
+    const file = event.target?.files?.[0];
+    if (!file) return;
 
-  // helpers: program load/save
-  function saveProgramLocal(){ localStorage.setItem('sim_program', $('program-code').value); alert('Programa salvo localmente.'); }
-  function loadProgramLocal(){ const p = localStorage.getItem('sim_program'); if(p){ $('program-code').value=p; alert('Programa carregado.'); } else alert('Nenhum programa salvo.'); }
-
-  // wire local functions to UI names for easier mapping
-  window.saveProgramLocal = saveProgramLocal; window.loadProgramLocal = loadProgramLocal;
-
-  // attaching simple names used in HTML buttons
-  function saveProgram(){ saveProgramLocal(); }
-  function loadProgramLocalWrapper(){ loadProgramLocal(); }
-
-  // Expose some functions for button wiring used earlier
-  window.saveProgram = saveProgram; window.loadProgram = loadProgramLocalWrapper; window.saveMachineLocal = saveMachineLocal; window.loadMachineLocal = loadMachineLocal;
-
-  // stub wrappers for earlier button ids
-  function exportProgramText(){ const txt = $('program-code').value; const blob = new Blob([txt], {type:'text/plain'}); const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='program.txt'; a.click(); URL.revokeObjectURL(url); }
-  window.exportProgramText = exportProgramText;
-
-  // expose validateProgram for button id
-  window.validateProgram = validateProgram;
-
-  // Hook up missing buttons that expect these names
-  // Provide minimal implementations for save/load program buttons declared in HTML
-  document.addEventListener('DOMContentLoaded', ()=>{
-    // map buttons by id to functions if present
-    const map = {
-      'save-program': saveProgramLocal,
-      'load-program': loadProgramLocal,
-      'save-machine': saveMachineLocal,
-      'load-machine': loadMachineLocal,
-      'export-program': exportProgramText
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const snapshot = JSON.parse(reader.result);
+        applyMachineSnapshot(snapshot);
+        alert('Maquina carregada com sucesso.');
+      } catch (error) {
+        alert('Arquivo de maquina invalido: ' + error.message);
+      } finally {
+        event.target.value = '';
+      }
     };
-    for(let id in map){ const el=document.getElementById(id); if(el) el.onclick = map[id]; }
-  });
+    reader.onerror = () => {
+      alert('Nao foi possivel ler o arquivo selecionado.');
+      event.target.value = '';
+    };
+    reader.readAsText(file);
+  }
 
-  // finally start UI
-  init();
+  function applyMachineSnapshot(snapshot) {
+    if (!snapshot || typeof snapshot !== 'object') {
+      throw new Error('Estrutura vazia ou invalida.');
+    }
+    const regCount = Number(
+      snapshot.regCount ?? snapshot.registerCount ?? snapshot.registersCount ?? snapshot.registers?.length
+    );
+    if (!Number.isInteger(regCount) || regCount < 1 || regCount > 16) {
+      throw new Error('Quantidade de registradores invalida.');
+    }
+    els.numRegisters.value = regCount;
+    state.inputRegs = Array.isArray(snapshot.inputRegs) ? snapshot.inputRegs.slice() : [];
+    state.outputRegs = Array.isArray(snapshot.outputRegs) ? snapshot.outputRegs.slice() : [];
+    state.mathOps = cloneRecord(snapshot.mathOps);
+    state.logicTests = cloneRecord(snapshot.logicTests);
+    if (snapshot.program && Array.isArray(snapshot.program.lines)) {
+      state.programLines = snapshot.program.lines.map((line, index) => ({
+        id: line.id ?? index + 1,
+        label: line.label || String(line.id ?? index + 1),
+        condReg: line.condReg || '',
+        condTest: line.condTest || '= 0',
+        thenGoto: line.thenGoto || '',
+        elseGoto: line.elseGoto || ''
+      }));
+    }
+    updateRegisters();
+  }
+
+  function cloneRecord(source) {
+    if (!source || typeof source !== 'object') return {};
+    return Object.fromEntries(
+      Object.entries(source)
+        .filter(([key, value]) => typeof key === 'string' && typeof value === 'string')
+        .map(([key, value]) => [key, value])
+    );
+  }
+
+  function renderInputValues() {
+    if (!els.inputValues) return;
+    els.inputValues.innerHTML = '';
+    if (state.inputRegs.length === 0) {
+      const helper = document.createElement('p');
+      helper.className = 'helper-text';
+      helper.textContent = 'Nenhum registrador marcado como entrada.';
+      els.inputValues.appendChild(helper);
+      return;
+    }
+
+    state.inputRegs.forEach((reg) => {
+      const row = document.createElement('div');
+      row.className = 'value-row';
+      const label = document.createElement('strong');
+      label.textContent = `${reg}:`;
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.value = state.inputValues[reg] !== undefined ? state.inputValues[reg] : 0;
+      input.addEventListener('input', (e) => {
+        state.inputValues[reg] = Number(e.target.value) || 0;
+      });
+      row.appendChild(label);
+      row.appendChild(input);
+      els.inputValues.appendChild(row);
+    });
+  }
+
+  function renderOutputValues() {
+    if (!els.outputValues) return;
+    els.outputValues.innerHTML = '';
+    if (state.outputRegs.length === 0) {
+      const helper = document.createElement('p');
+      helper.className = 'helper-text';
+      helper.textContent = 'Nenhum registrador marcado como saida.';
+      els.outputValues.appendChild(helper);
+      return;
+    }
+
+    state.outputRegs.forEach((reg) => {
+      const row = document.createElement('div');
+      row.className = 'value-row';
+      const label = document.createElement('strong');
+      label.textContent = `${reg}:`;
+      const value = document.createElement('span');
+      value.className = 'value-output';
+      value.textContent = state.outputValues[reg] !== undefined ? state.outputValues[reg] : '-';
+      row.appendChild(label);
+      row.appendChild(value);
+      els.outputValues.appendChild(row);
+    });
+  }
+
+  function executeProgram() {
+    if (state.programLines.length === 0) {
+      setLog(['Nenhuma linha de programa cadastrada.']);
+      return;
+    }
+    if (state.registers.length === 0) {
+      setLog(['Cadastre ao menos um registrador.']);
+      return;
+    }
+
+    const regs = {};
+    state.registers.forEach((reg) => {
+      regs[reg] = state.inputRegs.includes(reg) ? Number(state.inputValues[reg]) || 0 : 0;
+    });
+
+    let currentIndex = 0;
+    let steps = 0;
+    const maxSteps = 1000;
+    const log = [`Estado inicial: ${JSON.stringify(regs)}`];
+
+    while (currentIndex >= 0 && currentIndex < state.programLines.length && steps < maxSteps) {
+      const line = state.programLines[currentIndex];
+      const reg = state.registers.includes(line.condReg) ? line.condReg : state.registers[0];
+      if (!reg) {
+        log.push('Nenhum registrador valido para avaliar. Encerrando.');
+        break;
+      }
+
+      const regValue = Number(regs[reg]) || 0;
+      const test = line.condTest || '= 0';
+      const conditionMet = evaluateCondition(test, regValue);
+      const nextLabel = (conditionMet ? line.thenGoto : line.elseGoto).trim();
+
+      log.push(
+        `Linha ${line.label || currentIndex + 1}: ${reg}=${regValue} teste "${test}" -> ${
+          conditionMet ? 'entao' : 'senao'
+        } vá para ${nextLabel || '-'}`
+      );
+
+      if (!nextLabel) {
+        log.push('Programa encerrado (destino vazio).');
+        break;
+      }
+
+      const nextIndex = state.programLines.findIndex((l) => l.label === nextLabel);
+      if (nextIndex === -1) {
+        log.push(`Programa encerrado (rotulo ${nextLabel} nao encontrado).`);
+        break;
+      }
+
+      currentIndex = nextIndex;
+      steps++;
+    }
+
+    if (steps >= maxSteps) {
+      log.push('Aviso: limite de passos atingido (possivel loop infinito).');
+    }
+
+    state.outputRegs.forEach((reg) => {
+      state.outputValues[reg] = regs[reg];
+    });
+    renderOutputValues();
+    setLog(log);
+  }
+
+  function evaluateCondition(test, value) {
+    switch (test) {
+      case '= 0':
+        return value === 0;
+      case '> 0':
+        return value > 0;
+      case '< 0':
+        return value < 0;
+      case '>= 0':
+        return value >= 0;
+      case '<= 0':
+        return value <= 0;
+      case '!= 0':
+        return value !== 0;
+      default:
+        return false;
+    }
+  }
+
+  function setLog(lines) {
+    if (!els.computationLog) return;
+    const text = Array.isArray(lines) ? lines.join('\n') : String(lines);
+    els.computationLog.textContent = text;
+  }
 })();

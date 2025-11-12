@@ -3,17 +3,17 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Simulador de Máquina — Teoria da Computação (Genérico)</title>
+  <title>Simulador de Maquina - Teoria da Computacao</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <header>
     <div class="hero">
-      <h1>Simulador de Máquina — Teoria da Computação</h1>
+      <h1>Simulador de Maquina</h1>
       <p>
-        Versão com registradores <strong>R1..Rn</strong>, memória <strong>M0..Mm</strong>
-        e filas de entrada/saída. Ajuste as funções permitidas por registrador,
-        escreva o programa e acompanhe a execução passo a passo.
+        Configure registradores de entrada e saida, atribua operacoes e testes
+        por registrador, descreva o programa condicional e acompanhe o log da
+        computacao passo a passo.
       </p>
     </div>
   </header>
@@ -22,132 +22,126 @@
     <div class="layout">
       <div class="content-flow">
         <section class="panel" id="machine-def">
-          <h2>1) Definição da Máquina</h2>
-          <div class="row">
-            <div class="col">
-              <label>Memória (células) 1-16
-                <input type="number" id="mem-count" min="1" max="16" value="8" />
+          <h2>1) Definicao da Maquina</h2>
+          <div class="machine-grid">
+            <div class="machine-config">
+              <label>Quantidade de registradores (1-16)
+                <input type="number" id="numRegisters" min="1" max="16" value="5" />
               </label>
-              <label>Entradas (fila) 1-16
-                <input type="number" id="in-count" min="1" max="16" value="4" />
-              </label>
-              <label>Saídas (fila) 1-16
-                <input type="number" id="out-count" min="1" max="16" value="4" />
-              </label>
-              <label>Registradores (1-16)
-                <input type="number" id="reg-count" min="1" max="16" value="5" />
-              </label>
-              <div class="buttons">
-                <button id="apply-machine">Aplicar Máquina</button>
-                <button id="export-machine">Gerar Máquina (texto)</button>
-                <button id="save-machine">Gravar Máquina (local)</button>
-                <button id="load-machine">Carregar Máquina (local)</button>
+              <p class="helper-text">
+                Clique nos registradores para marca-los como entrada ou saida e
+                selecione as operacoes e testes disponiveis por registrador.
+              </p>
+              <div class="buttons compact">
+                <button id="saveMachineFile" type="button">Salvar maquina (.json)</button>
+                <button id="loadMachineFile" type="button">Carregar maquina</button>
+                <input type="file" id="machineFileInput" accept="application/json" hidden />
+              </div>
+              <div class="register-groups">
+                <div class="register-card">
+                  <h3>Registradores de entrada</h3>
+                  <div id="inputRegisters" class="register-grid"></div>
+                </div>
+                <div class="register-card">
+                  <h3>Registradores de saida</h3>
+                  <div id="outputRegisters" class="register-grid"></div>
+                </div>
               </div>
             </div>
-            <div class="col" id="reg-config-area">
-              <h3>Configuração por Registrador</h3>
-              <div id="reg-list"></div>
+          </div>
+          <div class="machine-ops-grid">
+            <div class="ops-card">
+              <h3>Operacoes matematicas por registrador</h3>
+              <div id="mathOperations"></div>
+            </div>
+            <div class="ops-card">
+              <h3>Testes logicos por registrador</h3>
+              <div id="logicTests"></div>
             </div>
           </div>
-          <pre id="machine-text" class="output"></pre>
+          <div class="machine-summary machine-summary-full">
+            <h3>Representacao textual</h3>
+            <pre id="machineOutput" class="output"></pre>
+          </div>
         </section>
 
         <section class="panel" id="program-def">
-          <h2>2) Definição do Programa</h2>
+          <h2>2) Definicao do Programa</h2>
           <p class="helper-text">
-            Formato (rotulado): <code>label: OP args</code> — Ex:
-            <code>inicio: IN R1</code> ou <code>loop: JZ R2 fim</code>
+            Cada linha segue o formato <code>rotulo: se REG TESTE entao vá para X senao vá para Y</code>. Use os botoes abaixo para montar o programa.
           </p>
-          <textarea id="program-code" rows="12" placeholder="Exemplo:
-inicio: IN R1
-loop: LOAD M0 R2
-ADD R1 R2
-STORE R2 M0
-OUT R2
-DEC R1
-JNZ R1 loop
-HALT"></textarea>
+          <div id="programLines" class="program-lines"></div>
           <div class="buttons">
-            <button id="validate-program">Validar Programa</button>
-            <button id="save-program">Gravar Programa</button>
-            <button id="export-program">Gerar Programa (texto)</button>
-            <button id="load-program">Carregar Programa</button>
+            <button id="addProgramLine" type="button">Adicionar linha</button>
           </div>
-          <pre id="program-validate" class="output"></pre>
+          <div class="output-box">
+            <h3>Representacao textual</h3>
+            <pre id="programOutput" class="output"></pre>
+          </div>
         </section>
 
         <section class="panel" id="execution">
-          <h2>3) Execução / Computação</h2>
+          <h2>3) Computacao</h2>
           <div class="row">
             <div class="col">
-              <h3>Entradas (fila)</h3>
-              <div id="inputs-area"></div>
-              <h3>Controles</h3>
-              <div class="buttons">
-                <button id="reset">Reset</button>
-                <button id="step">Step</button>
-                <button id="run">Run</button>
-                <button id="stop">Stop</button>
-                <label>Delay (ms)
-                  <input id="run-delay" type="number" value="300" min="0" />
-                </label>
-                <button id="export-log">Exportar Log</button>
-              </div>
+              <h3>Valores de entrada</h3>
+              <div id="inputValues" class="value-list"></div>
+              <button id="executeProgram" type="button">Computar</button>
             </div>
             <div class="col">
-              <h3>Registradores e Memória</h3>
-              <div id="regs-area" class="state-grid"></div>
-              <div id="mem-area" class="state-grid"></div>
-              <h3>Saídas (fila)</h3>
-              <div id="outputs-area"></div>
+              <h3>Valores de saida</h3>
+              <div id="outputValues" class="value-list"></div>
             </div>
           </div>
-
-          <h3>Trace / Função Computada</h3>
-          <pre id="trace" class="output trace"></pre>
+          <h3>Log de execucao</h3>
+          <div id="computationLog" class="log-box"></div>
         </section>
       </div>
+
       <aside class="side-help">
         <div class="side-card guide-card">
-          <h2>Guia rápido</h2>
+          <h2>Guia rapido</h2>
           <ol class="step-list">
             <li>
-              <a href="#machine-def">Configurar máquina</a>
-              <p>Escolha tamanhos, defina registradores e ajuste permissões por registrador.</p>
+              <a href="#machine-def">Defina a maquina</a>
+              <p>Escolha quantos registradores deseja e marque quais sao usados como entrada e saida.</p>
             </li>
             <li>
-              <a href="#program-def">Escrever programa</a>
-              <p>Use rótulos curtos e valide sempre que alterar as instruções.</p>
+              <a href="#program-def">Monte o programa</a>
+              <p>Construa as linhas condicionais informando o proximo rotulo para cada resultado.</p>
             </li>
             <li>
-              <a href="#execution">Executar e observar</a>
-              <p>Preencha as filas de entrada, use <strong>Step</strong> para depurar e <strong>Run</strong> para rodar.</p>
+              <a href="#execution">Execute e analise</a>
+              <p>Preencha os valores de entrada, clique em <strong>Computar</strong> e observe o log gerado.</p>
             </li>
           </ol>
-          <div class="quick-hint">
-            <strong>Dica:</strong> Salve máquina e programa localmente para continuar depois.
-          </div>
         </div>
 
         <div class="side-card instructions-card">
-          <h2>Instruções Suportadas</h2>
+          <h2>Operacoes e testes</h2>
           <ul class="instruction-list">
-            <li><code>IN Rn</code> — lê o próximo valor da fila de entrada para Rn</li>
-            <li><code>OUT Rn</code> — envia Rn para a fila de saída</li>
-            <li><code>MOV Rsrc Rdst</code> — copia valor entre registradores</li>
-            <li><code>LOAD Mx Rn</code> / <code>STORE Rn Mx</code> — troca valores com a memória</li>
-            <li><code>INC</code> / <code>DEC</code> — incrementa ou decrementa o registrador</li>
-            <li><code>ADD</code> / <code>SUB</code> — soma/subtrai Rsrc em Rdst</li>
-            <li><code>JUMP</code>, <code>JZ</code>, <code>JNZ</code> — desvios por rótulo</li>
-            <li><code>HALT</code> — encerra a computação</li>
+            <li>Selecione apenas uma operacao matematica por registrador.</li>
+            <li>Associe um teste logico por registrador para controlar saltos.</li>
+            <li>Os rotulos podem ser alfanumericos e servem para ligar as linhas.</li>
+            <li>Se um rotulo nao for encontrado o programa encerra automaticamente.</li>
+            <li>O log mostra o valor do registrador testado e o destino escolhido.</li>
           </ul>
-          <p class="helper-text">
-            Ajuste a aba “Configuração por Registrador” para liberar apenas as operações que cada registrador pode usar.
-          </p>
         </div>
       </aside>
     </div>
   </main>
+
+  <div id="saveModal" class="modal" aria-hidden="true" role="dialog">
+    <div class="modal-content">
+      <h3>Salvar definicao</h3>
+      <p>Deseja incluir a definicao do programa no arquivo exportado?</p>
+      <div class="modal-buttons">
+        <button id="saveMachineOnly" type="button">Somente maquina</button>
+        <button id="saveMachineWithProgram" type="button">Maquina + programa</button>
+        <button id="cancelSaveModal" type="button" class="ghost">Cancelar</button>
+      </div>
+    </div>
+  </div>
 
   <script src="app.js"></script>
 </body>
