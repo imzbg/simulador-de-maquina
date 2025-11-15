@@ -7,8 +7,8 @@ incluindo exportacao/importacao da configuracao em arquivos locais.
 ## Principais recursos
 - **Registradores dinamicos**: selecione de 1 a 16 registradores nomeados A..P.
 - **Entradas e saidas**: marque quais registradores servem como fila de entrada e quais guardam a saida final.
-- **Operacoes e testes por registrador**: escolha uma operacao matematica e um teste logico permitido para cada registrador.
-- **Construtor de programa**: defina linhas rotuladas com condicao (`se REG TESTE entao goto X senao goto Y`) e visualize a versao textual automaticamente.
+- **Operacoes e testes por registrador**: escolha uma ou mais operacoes matematicas e testes logicos permitidos para cada registrador.
+- **Construtor de programa**: defina linhas rotuladas como `se` (usa um teste selecionado) ou `faça` (executa uma operacao atribuida) e visualize a versao textual automaticamente.
 - **Execucao monitorada**: informe valores de entrada, execute o programa e acompanhe o log detalhado das decisoes.
 - **Exportar/Importar**: salve a maquina (com ou sem o programa) em arquivo `.json` e carregue a mesma configuracao posteriormente.
 
@@ -38,10 +38,3 @@ incluindo exportacao/importacao da configuracao em arquivos locais.
 - `style.css` – estilos, incluindo responsividade e modal de salvamento.
 - `app.js` – logica da aplicacao (estado da maquina, renderizacoes, execucao e IO local).
 
-## Limitacoes e notas
-- O modelo considera somente registradores, sem memoria adicional.
-- Cada linha do programa possui apenas um teste simples e dois destinos possiveis.
-- O limite de passos da execucao é 1000 para evitar loops infinitos.
-- Exportar arquivos requer permissao do navegador; por ser um projeto estatico, o armazenamento e inteiramente local.
-
-Contribuicoes e melhorias sao bem-vindas. Abra um issue ou envie um PR com sugestoes.
