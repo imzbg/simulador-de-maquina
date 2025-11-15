@@ -277,8 +277,12 @@
         getMathOpsForReg
       );
     }
-    normalized.thenGoto = normalized.thenGoto || '';
-    normalized.elseGoto = normalized.elseGoto || '';
+    normalized.thenGoto = normalized.thenGoto || '0';
+    if (normalized.kind === 'se') {
+      normalized.elseGoto = normalized.elseGoto || '0';
+    } else {
+      normalized.elseGoto = '0';
+    }
     normalized.actionOp = normalized.actionOp || '';
     normalized.condTest = normalized.condTest || '';
     return normalized;
@@ -450,9 +454,14 @@
       wrapper.className = 'program-line';
 
       wrapper.appendChild(
-        createInput(line.label, (value) => updateProgramLine(index, 'label', value), {
-          width: '60px'
-        })
+        createInput(
+          line.label,
+          (value) => updateProgramLine(index, 'label', value, { rerender: false }),
+          {
+            style: { width: '60px' },
+            autoZero: true
+          }
+        )
       );
       wrapper.appendChild(createSpan(':'));
       wrapper.appendChild(
@@ -490,7 +499,7 @@
           createInput(
             line.thenGoto,
             (value) => updateProgramLine(index, 'thenGoto', value),
-            { width: '90px' }
+            { style: { width: '90px' }, autoZero: true }
           )
         );
       } else {
@@ -511,7 +520,7 @@
           createInput(
             line.thenGoto,
             (value) => updateProgramLine(index, 'thenGoto', value),
-            { width: '90px' }
+            { style: { width: '90px' }, autoZero: true }
           )
         );
         wrapper.appendChild(createSpan('senao vá para'));
@@ -519,7 +528,7 @@
           createInput(
             line.elseGoto,
             (value) => updateProgramLine(index, 'elseGoto', value),
-            { width: '90px' }
+            { style: { width: '90px' }, autoZero: true }
           )
         );
       }
@@ -536,12 +545,22 @@
   }
 
 
-  function createInput(value, handler, style = {}) {
+  function createInput(value, handler, options = {}) {
     const input = document.createElement('input');
-    input.type = 'text';
+    input.type = options.type || 'text';
     input.value = value || '';
-    Object.assign(input.style, style);
-    input.addEventListener('input', (e) => handler(e.target.value.trim()));
+    if (options.style) Object.assign(input.style, options.style);
+    if (options.placeholder) input.placeholder = options.placeholder;
+    const applyValue = (raw) => handler(typeof raw === 'string' ? raw.trim() : raw);
+    input.addEventListener('input', (e) => applyValue(e.target.value));
+    if (options.autoZero) {
+      input.addEventListener('blur', () => {
+        if (!input.value.trim()) {
+          input.value = '0';
+          applyValue('0');
+        }
+      });
+    }
     return input;
   }
 
@@ -602,9 +621,18 @@
     updateProgramOutput();
   }
 
+  function normalizeProgramFieldValue(field, value) {
+    const trimmed = typeof value === 'string' ? value.trim() : value;
+    if (['label', 'thenGoto', 'elseGoto'].includes(field)) {
+      return trimmed || '0';
+    }
+    return trimmed;
+  }
+
   function updateProgramLine(index, field, value, options = {}) {
     if (!state.programLines[index]) return;
-    state.programLines[index][field] = value;
+    const normalizedValue = normalizeProgramFieldValue(field, value);
+    state.programLines[index][field] = normalizedValue;
     state.programLines[index] = normalizeProgramLine(state.programLines[index]);
     updateProgramOutput();
     if (options.rerender) renderProgramLines();
