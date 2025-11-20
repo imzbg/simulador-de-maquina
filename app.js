@@ -13,6 +13,7 @@
         condReg: 'A',
         condTest: '',
         actionOp: '',
+        actionValue: '1',
         thenGoto: '2',
         elseGoto: ''
       }
@@ -22,13 +23,13 @@
   };
 
   const availableMathOps = [
-    'Soma (+)',
-    'Subtracao (-)',
-    'Multiplicacao (*)',
-    'Divisao (/)',
-    'Modulo (%)',
-    'Incremento (++ )',
-    'Decremento (--)'
+    { id: 'add', label: 'Soma', display: 'Soma (+)', symbol: '+', usesValue: true },
+    { id: 'sub', label: 'Subtração', display: 'Subtração (-)', symbol: '-', usesValue: true },
+    { id: 'mul', label: 'Multiplicação', display: 'Multiplicação (*)', symbol: '*', usesValue: true },
+    { id: 'div', label: 'Divisão', display: 'Divisão (/)', symbol: '/', usesValue: true },
+    { id: 'mod', label: 'Módulo', display: 'Módulo (%)', symbol: '%', usesValue: true },
+    { id: 'inc', label: 'Incremento', display: 'Incremento (++ )', symbol: '++', usesValue: true },
+    { id: 'dec', label: 'Decremento', display: 'Decremento (--)', symbol: '--', usesValue: true }
   ];
 
   const availableLogicTests = ['= 0', '> 0', '< 0', '>= 0', '<= 0', '!= 0'];
@@ -107,6 +108,31 @@
     if (event.key === 'Escape' && els.saveModal?.classList.contains('show')) {
       closeSaveModal();
     }
+  }
+
+
+  function getMathOpById(id) {
+    return availableMathOps.find((op) => op.id === id) || null;
+  }
+
+  function getMathOpDisplay(id) {
+    const op = getMathOpById(id);
+    return op ? op.display : id || '(sem operação)';
+  }
+
+  function getMathOpLabel(id) {
+    const op = getMathOpById(id);
+    return op ? op.label : id || '(sem operação)';
+  }
+
+  function getMathOpIdFromLegacy(value) {
+    if (!value) return null;
+    const trimmed = String(value).trim();
+    let op =
+      availableMathOps.find((o) => o.id === trimmed) ||
+      availableMathOps.find((o) => o.label === trimmed) ||
+      availableMathOps.find((o) => o.display === trimmed);
+    return op ? op.id : null;
   }
 
   function generateRegisterNames(total) {
@@ -260,10 +286,12 @@
 
   function normalizeProgramLine(line) {
     const normalized = { ...line };
+
     normalized.kind = normalized.kind === 'faça' ? 'faça' : 'se';
     normalized.condReg = state.registers.includes(normalized.condReg)
       ? normalized.condReg
       : state.registers[0] || '';
+
     if (normalized.kind === 'se') {
       normalized.condTest = pickFirstValidValue(
         normalized.condReg,
@@ -277,14 +305,22 @@
         getMathOpsForReg
       );
     }
+
     normalized.thenGoto = normalized.thenGoto || '0';
     if (normalized.kind === 'se') {
       normalized.elseGoto = normalized.elseGoto || '0';
     } else {
       normalized.elseGoto = '0';
     }
+
     normalized.actionOp = normalized.actionOp || '';
     normalized.condTest = normalized.condTest || '';
+    if (normalized.actionValue === undefined || normalized.actionValue === null) {
+      normalized.actionValue = '1';
+    } else {
+      normalized.actionValue = String(normalized.actionValue).trim() || '1';
+    }
+
     return normalized;
   }
 
@@ -297,6 +333,8 @@
   function renderMathOperations() {
     if (!els.mathOperations) return;
     els.mathOperations.innerHTML = '';
+    const opIdsCatalog = availableMathOps.map((op) => op.id);
+
     state.registers.forEach((reg) => {
       const row = document.createElement('div');
       row.className = 'register-row';
@@ -311,9 +349,10 @@
       availableMathOps.forEach((op) => {
         const btn = document.createElement('button');
         btn.type = 'button';
-        btn.className = 'op-btn' + (selections.includes(op) ? ' selected' : '');
-        btn.textContent = op;
-        btn.addEventListener('click', () => toggleMathOp(reg, op));
+        const isSelected = selections.includes(op.id);
+        btn.className = 'op-btn' + (isSelected ? ' selected' : '');
+        btn.textContent = op.display;
+        btn.addEventListener('click', () => toggleMathOp(reg, op.id, opIdsCatalog));
         grid.appendChild(btn);
       });
 
@@ -350,8 +389,8 @@
     });
   }
 
-  function toggleMathOp(reg, op) {
-    toggleSelection(state.mathOps, availableMathOps, reg, op);
+  function toggleMathOp(reg, opId, opIdsCatalog) {
+    toggleSelection(state.mathOps, opIdsCatalog, reg, opId);
     syncProgramLinesForReg(reg);
     renderMathOperations();
     renderProgramLines();
@@ -366,75 +405,275 @@
     updateMachineOutput();
   }
 
-  function updateMachineOutput() {
-    if (!els.machineOutput) return;
-    const lines = [];
-    const registerCount = Math.max(state.registers.length, 1);
-    const memorySet = `N^${registerCount}`;
-    const inputSet = `N^${Math.max(state.inputRegs.length, 1)}`;
-    const outputSet = `N^${Math.max(state.outputRegs.length, 1)}`;
-    const machineName = `M_${registerCount}`;
-    const operationsSymbols = collectFunctionSymbols(state.mathOps);
-    const testSymbols = collectFunctionSymbols(state.logicTests);
+
+  function mathBaseNameFromOp(op) {
+    if (!op || !op.id) return 'op';
+    switch (op.id) {
+      case 'add':
+        return 'adiciona';
+      case 'sub':
+        return 'subtrai';
+      case 'mul':
+        return 'multiplica';
+      case 'div':
+        return 'divide';
+      case 'mod':
+        return 'modulo';
+      case 'inc':
+        return 'incrementa';
+      case 'dec':
+        return 'decrementa';
+      default:
+        return 'op';
+    }
+  }
+
+  function buildOperationSymbol(op, reg) {
+    const base = mathBaseNameFromOp(op);
+    return `${base}_${(reg || '').toLowerCase()}`;
+  }
+
+  function buildTestSymbol(testLabel, reg) {
+    if (testLabel === '= 0') {
+      return `${(reg || '').toLowerCase()}_zero`;
+    }
+    return formatFunctionSymbol(testLabel, reg);
+  }
+
+  function uniq(arr) {
+    const seen = new Set();
+    const out = [];
+    (arr || []).forEach((v) => {
+      if (!seen.has(v)) {
+        seen.add(v);
+        out.push(v);
+      }
+    });
+    return out;
+  }
+
+  function buildTupleVarNames(count) {
+    if (count === 2) return ['n', 'm'];
+    const vars = [];
+    for (let i = 1; i <= count; i++) {
+      vars.push(`x${i}`);
+    }
+    return vars;
+  }
+
+  function buildInputTupleForReg(reg, totalRegs) {
+    const idx = Math.max(0, state.registers.indexOf(reg));
+    const parts = [];
+    for (let i = 0; i < totalRegs; i++) {
+      parts.push(i === idx ? 'n' : '0');
+    }
+    return `(${parts.join(', ')})`;
+  }
+
+  function addOperationSemantics(lines, symbol, memorySet, reg, op, tupleVars) {
+    const regIndex = Math.max(0, state.registers.indexOf(reg));
+    const tupleStr = `(${tupleVars.join(', ')})`;
+    const regVar = tupleVars[regIndex] || tupleVars[0];
+
+    if (op.id === 'sub' || op.id === 'dec') {
+      const posParts = tupleVars.map((v, i) => (i === regIndex ? `${regVar}-1` : v));
+      const zeroParts = tupleVars.map((v, i) => (i === regIndex ? '0' : v));
+      lines.push(
+        `    ${symbol}: ${memorySet} → ${memorySet} tal que, ∀${tupleStr}∈${memorySet},`
+      );
+      lines.push(
+        `      ${symbol}${tupleStr} = (${posParts.join(', ')}), se ${regVar} > 0; ${symbol}${tupleStr} = (${zeroParts.join(', ')}), se ${regVar} = 0`
+      );
+      return;
+    }
+
+    if (op.id === 'add' || op.id === 'inc') {
+      const parts = tupleVars.map((v, i) => (i === regIndex ? `${regVar}+1` : v));
+      lines.push(
+        `    ${symbol}: ${memorySet} → ${memorySet} tal que, ∀${tupleStr}∈${memorySet}, ${symbol}${tupleStr} = (${parts.join(', ')})`
+      );
+      return;
+    }
 
     lines.push(
-      `${machineName} = (${memorySet}, ${inputSet}, ${outputSet}, {${operationsSymbols.join(', ') ||
-        '-'}}, {${testSymbols.join(', ') || '-'}})`
+      `    ${symbol}: ${memorySet} → ${memorySet} tal que, ∀${tupleStr}∈${memorySet}, ${symbol}${tupleStr} atualiza o componente correspondente ao registrador ${reg} aplicando "${op.display}".`
+    );
+  }
+
+  function addTestSemantics(lines, symbol, memorySet, reg, testLabel, tupleVars) {
+    const regIndex = Math.max(0, state.registers.indexOf(reg));
+    const tupleStr = `(${tupleVars.join(', ')})`;
+    const regVar = tupleVars[regIndex] || tupleVars[0];
+
+    if (testLabel === '= 0') {
+      lines.push(
+        `    ${symbol}: ${memorySet} → {verdadeiro, falso} tal que, ∀${tupleStr}∈${memorySet},`
+      );
+      lines.push(
+        `      ${symbol}${tupleStr} = verdadeiro, se ${regVar} = 0; ${symbol}${tupleStr} = falso, se ${regVar} ≠ 0`
+      );
+      return;
+    }
+
+    lines.push(
+      `    ${symbol}: ${memorySet} → {verdadeiro, falso} tal que, ∀${tupleStr}∈${memorySet}, ${symbol}${tupleStr} indica se o valor do registrador ${reg} satisfaz o teste "${testLabel}".`
+    );
+  }
+
+  function updateMachineOutput() {
+    if (!els.machineOutput) return;
+
+    const lines = [];
+    const registerCount = Math.max(state.registers.length, 1);
+    const memorySet = registerCount === 1 ? 'N' : `N${registerCount}`;
+
+    const inputDim = state.inputRegs.length || 1;
+    const outputDim = state.outputRegs.length || 1;
+    const inputSet = inputDim === 1 ? 'N' : `N${inputDim}`;
+    const outputSet = outputDim === 1 ? 'N' : `N${outputDim}`;
+
+    let machineName = `M_${registerCount}`;
+    if (
+      registerCount === 2 &&
+      state.registers[0] === 'A' &&
+      state.registers[1] === 'B'
+    ) {
+      machineName = 'dois_reg';
+    }
+
+    const inputFunctions = state.inputRegs.map((reg) => `armazena_${reg.toLowerCase()}`);
+    const outputFunctions = state.outputRegs.map((reg) => `retorna_${reg.toLowerCase()}`);
+
+    const operationSymbols = [];
+    Object.entries(state.mathOps || {}).forEach(([reg, values]) => {
+      asArray(values).forEach((opId) => {
+        const op = getMathOpById(opId);
+        if (!op) return;
+        operationSymbols.push(buildOperationSymbol(op, reg));
+      });
+    });
+
+    const testSymbols = [];
+    Object.entries(state.logicTests || {}).forEach(([reg, values]) => {
+      asArray(values).forEach((testLabel) => {
+        testSymbols.push(buildTestSymbol(testLabel, reg));
+      });
+    });
+
+    const opsSet = uniq(operationSymbols);
+    const testsSet = uniq(testSymbols);
+
+    lines.push(
+      `${machineName} = (${memorySet}, ${inputSet}, ${outputSet}, ${inputFunctions.join(', ') ||
+        '-'}, ${outputFunctions.join(', ') || '-'}, {${opsSet.join(', ') ||
+        '-'}}, {${testsSet.join(', ') || '-'}})`
     );
     lines.push('');
-    lines.push(`${memorySet}, ${inputSet}, ${outputSet} - Conjuntos de Memoria, Entrada e Saida`);
+    lines.push(`${memorySet}, ${inputSet}, ${outputSet} - Conjuntos de Memória, Entrada e Saída`);
     lines.push('');
-    lines.push('Operacoes definidas:');
-    if (operationsSymbols.length === 0) {
-      lines.push('  (nenhuma operacao configurada)');
+
+    if (inputFunctions.length > 0) {
+      state.inputRegs.forEach((reg) => {
+        const fname = `armazena_${reg.toLowerCase()}`;
+        const tuple = buildInputTupleForReg(reg, registerCount);
+        lines.push(
+          `${fname}: N → ${memorySet} tal que, ∀n∈N, ${fname}(n) = ${tuple}`
+        );
+      });
+      lines.push('');
+    }
+
+    if (outputFunctions.length > 0) {
+      const tupleVars = buildTupleVarNames(registerCount);
+      const tupleStr = `(${tupleVars.join(', ')})`;
+      state.outputRegs.forEach((reg) => {
+        const fname = `retorna_${reg.toLowerCase()}`;
+        const idx = Math.max(0, state.registers.indexOf(reg));
+        const component = tupleVars[idx] || tupleVars[0];
+        lines.push(
+          `${fname}: ${memorySet} → N tal que, ∀${tupleStr}∈${memorySet}, ${fname}${tupleStr} = ${component}`
+        );
+      });
+      lines.push('');
+    }
+
+    lines.push('Operações matemáticas definidas:');
+    if (opsSet.length === 0) {
+      lines.push('  (nenhuma operação configurada)');
     } else {
       appendFunctionDescriptions(lines, state.mathOps, memorySet, 'operacao');
     }
     lines.push('');
-    lines.push('Testes logicos definidos:');
-    if (testSymbols.length === 0) {
+
+    lines.push('Testes lógicos definidos:');
+    if (testsSet.length === 0) {
       lines.push('  (nenhum teste configurado)');
     } else {
       appendFunctionDescriptions(lines, state.logicTests, memorySet, 'teste');
     }
+
     els.machineOutput.textContent = lines.join('\n');
   }
 
-  function collectFunctionSymbols(record) {
+  function collectOperationSymbols() {
     const symbols = [];
-    Object.entries(record || {}).forEach(([reg, values]) => {
-      asArray(values).forEach((value) => symbols.push(formatFunctionSymbol(value, reg)));
+    Object.entries(state.mathOps || {}).forEach(([reg, values]) => {
+      asArray(values).forEach((opId) => {
+        const op = getMathOpById(opId);
+        if (!op) return;
+        symbols.push(formatFunctionSymbol(op.label, reg));
+      });
+    });
+    return symbols;
+  }
+
+  function collectTestSymbols() {
+    const symbols = [];
+    Object.entries(state.logicTests || {}).forEach(([reg, values]) => {
+      asArray(values).forEach((label) => {
+        symbols.push(formatFunctionSymbol(label, reg));
+      });
     });
     return symbols;
   }
 
   function formatFunctionSymbol(label, reg) {
-    const slug = String(label || '')
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9]+/g, '_')
-      .replace(/^_|_$/g, '') || 'funcao';
+    const slug =
+      String(label || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_|_$/g, '') || 'funcao';
     return `${slug}_${(reg || '').toLowerCase()}`;
   }
 
   function appendFunctionDescriptions(lines, record, domain, type) {
+    const regCount = Math.max(state.registers.length, 1);
+    const tupleVars = buildTupleVarNames(regCount);
+
     Object.entries(record || {}).forEach(([reg, values]) => {
       const selections = asArray(values);
       if (selections.length === 0) return;
-      lines.push(`  ${reg}: ${selections.join(', ')}`);
-      selections.forEach((label) => {
-        const symbol = formatFunctionSymbol(label, reg);
-        if (type === 'operacao') {
-          lines.push(
-            `    ${symbol}: ${domain} -> ${domain} tal que aplica "${label}" sob o registrador ${reg}`
-          );
-        } else {
-          lines.push(
-            `    ${symbol}: ${domain} -> {verdadeiro, falso} tal que testa "${label}" no registrador ${reg}`
-          );
-        }
-      });
+
+      if (type === 'operacao') {
+        const ops = selections
+          .map((opId) => getMathOpById(opId))
+          .filter((op) => !!op);
+        if (ops.length === 0) return;
+        const labels = ops.map((op) => op.display);
+        lines.push(`  ${reg}: ${labels.join(', ')}`);
+        ops.forEach((op) => {
+          const symbol = buildOperationSymbol(op, reg);
+          addOperationSemantics(lines, symbol, domain, reg, op, tupleVars);
+        });
+      } else {
+        lines.push(`  ${reg}: ${selections.join(', ')}`);
+        selections.forEach((testLabel) => {
+          const symbol = buildTestSymbol(testLabel, reg);
+          addTestSemantics(lines, symbol, domain, reg, testLabel, tupleVars);
+        });
+      }
     });
   }
 
@@ -482,18 +721,36 @@
       );
 
       if (line.kind === 'faça') {
-        const ops = getMathOpsForReg(line.condReg);
+        const opIds = getMathOpsForReg(line.condReg);
+        const options = opIds
+          .map((id) => {
+            const op = getMathOpById(id);
+            return op
+              ? { value: op.id, label: op.display }
+              : { value: id, label: id };
+          });
+
         wrapper.appendChild(
           createSelect(
-            ops,
+            options,
             line.actionOp,
             (value) => updateProgramLine(index, 'actionOp', value),
             {
-              placeholder: 'Nenhuma operacao vinculada',
-              style: { minWidth: '150px' }
+              placeholder: 'Nenhuma operação vinculada',
+              style: { minWidth: '170px' }
             }
           )
         );
+
+        wrapper.appendChild(createSpan('k ='));
+        wrapper.appendChild(
+          createInput(
+            line.actionValue,
+            (value) => updateProgramLine(index, 'actionValue', value),
+            { style: { width: '60px' }, autoZero: true, type: 'number' }
+          )
+        );
+
         wrapper.appendChild(createSpan('e vá para'));
         wrapper.appendChild(
           createInput(
@@ -515,7 +772,7 @@
             }
           )
         );
-        wrapper.appendChild(createSpan('entao vá para'));
+        wrapper.appendChild(createSpan('então vá para'));
         wrapper.appendChild(
           createInput(
             line.thenGoto,
@@ -523,7 +780,7 @@
             { style: { width: '90px' }, autoZero: true }
           )
         );
-        wrapper.appendChild(createSpan('senao vá para'));
+        wrapper.appendChild(createSpan('senão vá para'));
         wrapper.appendChild(
           createInput(
             line.elseGoto,
@@ -544,11 +801,10 @@
     });
   }
 
-
   function createInput(value, handler, options = {}) {
     const input = document.createElement('input');
     input.type = options.type || 'text';
-    input.value = value || '';
+    input.value = value !== undefined && value !== null ? value : '';
     if (options.style) Object.assign(input.style, options.style);
     if (options.placeholder) input.placeholder = options.placeholder;
     const applyValue = (raw) => handler(typeof raw === 'string' ? raw.trim() : raw);
@@ -573,13 +829,23 @@
   function createSelect(options, current, handler, config = {}) {
     const select = document.createElement('select');
     if (config.style) Object.assign(select.style, config.style);
-    const normalized = (options || []).map((opt) =>
-      typeof opt === 'string' ? { value: opt, label: opt } : opt
-    );
+
+    let normalized;
+    if (Array.isArray(options) && options.length && typeof options[0] === 'object') {
+      normalized = options.map((opt) => ({
+        value: opt.value,
+        label: opt.label
+      }));
+    } else {
+      normalized = (options || []).map((opt) =>
+        typeof opt === 'string' ? { value: opt, label: opt } : opt
+      );
+    }
+
     if (normalized.length === 0) {
       const placeholder = document.createElement('option');
       placeholder.value = '';
-      placeholder.textContent = config.placeholder || 'Sem opcoes disponiveis';
+      placeholder.textContent = config.placeholder || 'Sem opções disponíveis';
       select.appendChild(placeholder);
       select.disabled = true;
     } else {
@@ -607,6 +873,7 @@
       condReg: baseReg,
       condTest: '',
       actionOp: '',
+      actionValue: '1',
       thenGoto: '',
       elseGoto: ''
     });
@@ -625,6 +892,9 @@
     const trimmed = typeof value === 'string' ? value.trim() : value;
     if (['label', 'thenGoto', 'elseGoto'].includes(field)) {
       return trimmed || '0';
+    }
+    if (field === 'actionValue') {
+      return trimmed === '' || trimmed === undefined || trimmed === null ? '1' : String(trimmed);
     }
     return trimmed;
   }
@@ -645,19 +915,24 @@
 
   function getProgramText() {
     const lines = [];
-    lines.push('DEFINICAO DO PROGRAMA');
+    lines.push('DEFINIÇÃO DO PROGRAMA');
     lines.push('='.repeat(50));
     lines.push('');
     state.programLines.forEach((line) => {
       if (line.kind === 'faça') {
+        const opDisplay = getMathOpDisplay(line.actionOp);
+        const k = line.actionValue || '1';
         lines.push(
-          `${line.label || '?'}: faça ${line.condReg || '-'} ${line.actionOp ||
-            '(sem operacao)'} e vá para ${line.thenGoto || '-'}`
+          `${line.label || '?'}: faça ${line.condReg || '-'} ${opDisplay} k=${k} e vá para ${
+            line.thenGoto || '-'
+          }`
         );
       } else {
         lines.push(
           `${line.label || '?'}: se ${line.condReg || '-'} ${line.condTest ||
-            '(sem teste)'} entao vá para ${line.thenGoto || '-'} senao vá para ${line.elseGoto || '-'}`
+            '(sem teste)'} então vá para ${line.thenGoto || '-'} senão vá para ${
+            line.elseGoto || '-'
+          }`
         );
       }
     });
@@ -690,6 +965,7 @@
         condReg: line.condReg || '',
         condTest: line.condTest || '',
         actionOp: line.actionOp || '',
+        actionValue: line.actionValue || '1',
         thenGoto: line.thenGoto || '',
         elseGoto: line.elseGoto || ''
       })),
@@ -709,7 +985,7 @@
       a.click();
       URL.revokeObjectURL(url);
     } catch (error) {
-      alert('Nao foi possivel salvar a maquina: ' + error.message);
+      alert('Não foi possível salvar a máquina: ' + error.message);
     }
   }
 
@@ -722,15 +998,15 @@
       try {
         const snapshot = JSON.parse(reader.result);
         applyMachineSnapshot(snapshot);
-        alert('Maquina carregada com sucesso.');
+        alert('Máquina carregada com sucesso.');
       } catch (error) {
-        alert('Arquivo de maquina invalido: ' + error.message);
+        alert('Arquivo de máquina inválido: ' + error.message);
       } finally {
         event.target.value = '';
       }
     };
     reader.onerror = () => {
-      alert('Nao foi possivel ler o arquivo selecionado.');
+      alert('Não foi possível ler o arquivo selecionado.');
       event.target.value = '';
     };
     reader.readAsText(file);
@@ -738,19 +1014,23 @@
 
   function applyMachineSnapshot(snapshot) {
     if (!snapshot || typeof snapshot !== 'object') {
-      throw new Error('Estrutura vazia ou invalida.');
+      throw new Error('Estrutura vazia ou inválida.');
     }
     const regCount = Number(
-      snapshot.regCount ?? snapshot.registerCount ?? snapshot.registersCount ?? snapshot.registers?.length
+      snapshot.regCount ??
+        snapshot.registerCount ??
+        snapshot.registersCount ??
+        snapshot.registers?.length
     );
     if (!Number.isInteger(regCount) || regCount < 1 || regCount > 16) {
-      throw new Error('Quantidade de registradores invalida.');
+      throw new Error('Quantidade de registradores inválida.');
     }
     els.numRegisters.value = regCount;
     state.inputRegs = Array.isArray(snapshot.inputRegs) ? snapshot.inputRegs.slice() : [];
     state.outputRegs = Array.isArray(snapshot.outputRegs) ? snapshot.outputRegs.slice() : [];
-    state.mathOps = cloneRecord(snapshot.mathOps);
+    state.mathOps = normalizeMathOpsRecord(snapshot.mathOps);
     state.logicTests = cloneRecord(snapshot.logicTests);
+
     if (snapshot.program && Array.isArray(snapshot.program.lines)) {
       state.programLines = snapshot.program.lines.map((line, index) => ({
         id: line.id ?? index + 1,
@@ -759,11 +1039,26 @@
         condReg: line.condReg || '',
         condTest: line.condTest || '',
         actionOp: line.actionOp || '',
+        actionValue: line.actionValue !== undefined ? String(line.actionValue) : '1',
         thenGoto: line.thenGoto || '',
         elseGoto: line.elseGoto || ''
       }));
     }
     updateRegisters();
+  }
+
+  function normalizeMathOpsRecord(source) {
+    if (!source || typeof source !== 'object') return {};
+    const next = {};
+    Object.entries(source).forEach(([key, value]) => {
+      if (typeof key !== 'string') return;
+      const entries = asArray(value);
+      const mapped = entries
+        .map((entry) => getMathOpIdFromLegacy(entry))
+        .filter((id) => !!id);
+      if (mapped.length) next[key] = mapped;
+    });
+    return next;
   }
 
   function cloneRecord(source) {
@@ -811,7 +1106,7 @@
     if (state.outputRegs.length === 0) {
       const helper = document.createElement('p');
       helper.className = 'helper-text';
-      helper.textContent = 'Nenhum registrador marcado como saida.';
+      helper.textContent = 'Nenhum registrador marcado como saída.';
       els.outputValues.appendChild(helper);
       return;
     }
@@ -854,7 +1149,7 @@
       const line = state.programLines[currentIndex];
       const reg = state.registers.includes(line.condReg) ? line.condReg : state.registers[0];
       if (!reg) {
-        log.push('Nenhum registrador valido para avaliar. Encerrando.');
+        log.push('Nenhum registrador válido para avaliar. Encerrando.');
         break;
       }
 
@@ -863,13 +1158,15 @@
       if (line.kind === 'faça') {
         const nextLabel = (line.thenGoto || '').trim();
         if (!line.actionOp) {
-          log.push(`Linha ${line.label || currentIndex + 1}: nenhuma operacao definida. Encerrando.`);
+          log.push(`Linha ${line.label || currentIndex + 1}: nenhuma operação definida. Encerrando.`);
           break;
         }
-        const updatedValue = applyOperation(line.actionOp, regValue);
+        const k = Number(line.actionValue) || 0;
+        const updatedValue = applyOperation(line.actionOp, regValue, k);
+        const opDisplay = getMathOpDisplay(line.actionOp);
         regs[reg] = updatedValue;
         log.push(
-          `Linha ${line.label || currentIndex + 1}: faça ${reg} ${line.actionOp} -> ${reg}=${updatedValue} e vá para ${nextLabel || '-'}`
+          `Linha ${line.label || currentIndex + 1}: faça ${reg} ${opDisplay} k=${k} -> ${reg}=${updatedValue} e vá para ${nextLabel || '-'}`
         );
         if (!nextLabel) {
           log.push('Programa encerrado (destino vazio).');
@@ -877,7 +1174,7 @@
         }
         const nextIndex = state.programLines.findIndex((l) => l.label === nextLabel);
         if (nextIndex === -1) {
-          log.push(`Programa encerrado (rotulo ${nextLabel} nao encontrado).`);
+          log.push(`Programa encerrado (rótulo ${nextLabel} não encontrado).`);
           break;
         }
         currentIndex = nextIndex;
@@ -895,7 +1192,7 @@
 
       log.push(
         `Linha ${line.label || currentIndex + 1}: ${reg}=${regValue} teste "${test}" -> ${
-          conditionMet ? 'entao' : 'senao'
+          conditionMet ? 'então' : 'senão'
         } vá para ${nextLabel || '-'}`
       );
 
@@ -906,7 +1203,7 @@
 
       const nextIndex = state.programLines.findIndex((l) => l.label === nextLabel);
       if (nextIndex === -1) {
-        log.push(`Programa encerrado (rotulo ${nextLabel} nao encontrado).`);
+        log.push(`Programa encerrado (rótulo ${nextLabel} não encontrado).`);
         break;
       }
 
@@ -915,7 +1212,7 @@
     }
 
     if (steps >= maxSteps) {
-      log.push('Aviso: limite de passos atingido (possivel loop infinito).');
+      log.push('Aviso: limite de passos atingido (possível loop infinito).');
     }
 
     state.outputRegs.forEach((reg) => {
@@ -944,21 +1241,28 @@
     }
   }
 
-  function applyOperation(operation, value) {
+  function applyOperation(operationId, value, k) {
     const current = Number(value) || 0;
-    switch (operation) {
-      case 'Soma (+)':
-      case 'Incremento (++ )':
-        return current + 1;
-      case 'Subtracao (-)':
-      case 'Decremento (--)':
-        return Math.max(0, current - 1);
-      case 'Multiplicacao (*)':
-        return current * 2;
-      case 'Divisao (/)':
-        return current === 0 ? 0 : Math.trunc(current / 2);
-      case 'Modulo (%)':
-        return current % 2;
+    const param = Number(k);
+    const n = Number.isFinite(param) ? param : 0;
+
+    switch (operationId) {
+      case 'add':
+        return current + n;
+      case 'sub':
+        return Math.max(0, current - n);
+      case 'mul':
+        return current * n;
+      case 'div':
+        if (n === 0) return current;
+        return Math.trunc(current / n);
+      case 'mod':
+        if (n === 0) return current;
+        return current % n;
+      case 'inc':
+        return current + (n || 1);
+      case 'dec':
+        return Math.max(0, current - (n || 1));
       default:
         return current;
     }

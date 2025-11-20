@@ -3,17 +3,17 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Simulador de Maquina - Teoria da Computacao</title>
+  <title>Simulador de Máquina - Teoria da Computação</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <header>
     <div class="hero">
-      <h1>Simulador de Maquina</h1>
+      <h1>Simulador de Máquina</h1>
       <p>
-        Configure registradores de entrada e saida, atribua operacoes e testes
+        Configure registradores de entrada e saída, atribua operações e testes
         por registrador, descreva o programa condicional e acompanhe o log da
-        computacao passo a passo.
+        computação passo a passo.
       </p>
     </div>
   </header>
@@ -22,19 +22,19 @@
     <div class="layout">
       <div class="content-flow">
         <section class="panel" id="machine-def">
-          <h2>1) Definicao da Maquina</h2>
+          <h2>1) Definição da Máquina</h2>
           <div class="machine-grid">
             <div class="machine-config">
               <label>Quantidade de registradores (1-16)
                 <input type="number" id="numRegisters" min="1" max="16" value="5" />
               </label>
               <p class="helper-text">
-                Clique nos registradores para marca-los como entrada ou saida e
-                selecione as operacoes e testes disponiveis por registrador.
+                Clique nos registradores para marcá-los como entrada ou saída e
+                selecione as operações e testes disponíveis por registrador.
               </p>
               <div class="buttons compact">
-                <button id="saveMachineFile" type="button">Salvar maquina (.json)</button>
-                <button id="loadMachineFile" type="button">Carregar maquina</button>
+                <button id="saveMachineFile" type="button">Salvar máquina (.json)</button>
+                <button id="loadMachineFile" type="button">Carregar máquina</button>
                 <input type="file" id="machineFileInput" accept="application/json" hidden />
               </div>
               <div class="register-groups">
@@ -43,7 +43,7 @@
                   <div id="inputRegisters" class="register-grid"></div>
                 </div>
                 <div class="register-card">
-                  <h3>Registradores de saida</h3>
+                  <h3>Registradores de saída</h3>
                   <div id="outputRegisters" class="register-grid"></div>
                 </div>
               </div>
@@ -51,37 +51,39 @@
           </div>
           <div class="machine-ops-grid">
             <div class="ops-card">
-              <h3>Operacoes matematicas por registrador</h3>
+              <h3>Operações matemáticas por registrador</h3>
               <div id="mathOperations"></div>
             </div>
             <div class="ops-card">
-              <h3>Testes logicos por registrador</h3>
+              <h3>Testes lógicos por registrador</h3>
               <div id="logicTests"></div>
             </div>
           </div>
           <div class="machine-summary machine-summary-full">
-            <h3>Representacao textual</h3>
+            <h3>Representação textual</h3>
             <pre id="machineOutput" class="output"></pre>
           </div>
         </section>
 
         <section class="panel" id="program-def">
-          <h2>2) Definicao do Programa</h2>
+          <h2>2) Definição do Programa</h2>
           <p class="helper-text">
-            Cada linha pode ser configurada como <code>se</code> (usa um teste logico disponivel para o registrador) ou <code>faça</code> (executa uma operacao atribuida ao registrador e segue para um rotulo). Escolha o tipo, selecione o registrador e defina os destinos.
+            Cada linha pode ser configurada como <code>se</code> (usa um teste lógico disponível para o registrador)
+            ou <code>faça</code> (executa uma operação atribuída ao registrador com um <strong>valor inteiro</strong>
+            e segue para um rótulo). O valor aparece em um campo ao lado da operação.
           </p>
           <div id="programLines" class="program-lines"></div>
           <div class="buttons">
             <button id="addProgramLine" type="button">Adicionar linha</button>
           </div>
           <div class="output-box">
-            <h3>Representacao textual</h3>
+            <h3>Representação textual</h3>
             <pre id="programOutput" class="output"></pre>
           </div>
         </section>
 
         <section class="panel" id="execution">
-          <h2>3) Computacao</h2>
+          <h2>3) Computação</h2>
           <div class="row">
             <div class="col">
               <h3>Valores de entrada</h3>
@@ -89,26 +91,26 @@
               <button id="executeProgram" type="button">Computar</button>
             </div>
             <div class="col">
-              <h3>Valores de saida</h3>
+              <h3>Valores de saída</h3>
               <div id="outputValues" class="value-list"></div>
             </div>
           </div>
-          <h3>Log de execucao</h3>
+          <h3>Log de execução</h3>
           <div id="computationLog" class="log-box"></div>
         </section>
       </div>
 
       <aside class="side-help">
         <div class="side-card guide-card">
-          <h2>Guia rapido</h2>
+          <h2>Guia rápido</h2>
           <ol class="step-list">
             <li>
-              <a href="#machine-def">Defina a maquina</a>
-              <p>Escolha quantos registradores deseja e marque quais sao usados como entrada e saida.</p>
+              <a href="#machine-def">Defina a máquina</a>
+              <p>Escolha quantos registradores deseja e marque quais são usados como entrada e saída.</p>
             </li>
             <li>
               <a href="#program-def">Monte o programa</a>
-              <p>Construa as linhas condicionais informando o proximo rotulo para cada resultado.</p>
+              <p>Construa as linhas condicionais informando o próximo rótulo para cada resultado.</p>
             </li>
             <li>
               <a href="#execution">Execute e analise</a>
@@ -118,14 +120,14 @@
         </div>
 
         <div class="side-card instructions-card">
-          <h2>Operacoes e testes</h2>
+          <h2>Operações e testes</h2>
           <ul class="instruction-list">
-            <li>Selecione uma ou mais operacoes matematicas disponiveis por registrador.</li>
-            <li>Associe um ou mais testes logicos por registrador para controlar saltos.</li>
-            <li>As operacoes e testes usados no programa aparecem conforme forem habilitados na definicao da maquina.</li>
-            <li>Os rotulos podem ser alfanumericos e servem para ligar as linhas.</li>
-            <li>Se um rotulo nao for encontrado o programa encerra automaticamente.</li>
-            <li>O log mostra o valor do registrador testado e o destino escolhido.</li>
+            <li>Selecione uma ou mais operações matemáticas disponíveis por registrador.</li>
+            <li>Associe um ou mais testes lógicos por registrador para controlar saltos.</li>
+            <li>As operações e testes usados no programa aparecem conforme forem habilitados na definição da máquina.</li>
+            <li>Os rótulos podem ser alfanuméricos e servem para ligar as linhas.</li>
+            <li>Se um rótulo não for encontrado o programa encerra automaticamente.</li>
+            <li>O log mostra o valor do registrador testado, o valor do parâmetro da operação e o destino escolhido.</li>
           </ul>
         </div>
       </aside>
@@ -134,11 +136,11 @@
 
   <div id="saveModal" class="modal" aria-hidden="true" role="dialog">
     <div class="modal-content">
-      <h3>Salvar definicao</h3>
-      <p>Deseja incluir a definicao do programa no arquivo exportado?</p>
+      <h3>Salvar definição</h3>
+      <p>Deseja incluir a definição do programa no arquivo exportado?</p>
       <div class="modal-buttons">
-        <button id="saveMachineOnly" type="button">Somente maquina</button>
-        <button id="saveMachineWithProgram" type="button">Maquina + programa</button>
+        <button id="saveMachineOnly" type="button">Somente máquina</button>
+        <button id="saveMachineWithProgram" type="button">Máquina + programa</button>
         <button id="cancelSaveModal" type="button" class="ghost">Cancelar</button>
       </div>
     </div>
