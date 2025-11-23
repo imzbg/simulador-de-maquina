@@ -284,6 +284,11 @@
     return options[0];
   }
 
+  function getStaticActionValue(actionOpId) {
+    if (actionOpId === 'mul' || actionOpId === 'div') return '2';
+    return '1';
+  }
+
   function normalizeProgramLine(line) {
     const normalized = { ...line };
 
@@ -315,11 +320,8 @@
 
     normalized.actionOp = normalized.actionOp || '';
     normalized.condTest = normalized.condTest || '';
-    if (normalized.actionValue === undefined || normalized.actionValue === null) {
-      normalized.actionValue = '1';
-    } else {
-      normalized.actionValue = String(normalized.actionValue).trim() || '1';
-    }
+    normalized.actionValue =
+      normalized.kind === 'faça' ? getStaticActionValue(normalized.actionOp) : '1';
 
     return normalized;
   }
@@ -734,7 +736,7 @@
           createSelect(
             options,
             line.actionOp,
-            (value) => updateProgramLine(index, 'actionOp', value),
+            (value) => updateProgramLine(index, 'actionOp', value, { rerender: true }),
             {
               placeholder: 'Nenhuma operação vinculada',
               style: { minWidth: '170px' }
@@ -746,8 +748,8 @@
         wrapper.appendChild(
           createInput(
             line.actionValue,
-            (value) => updateProgramLine(index, 'actionValue', value),
-            { style: { width: '60px' }, autoZero: true, type: 'number' }
+            () => {},
+            { style: { width: '60px' }, type: 'number', disabled: true }
           )
         );
 
@@ -808,14 +810,17 @@
     if (options.style) Object.assign(input.style, options.style);
     if (options.placeholder) input.placeholder = options.placeholder;
     const applyValue = (raw) => handler(typeof raw === 'string' ? raw.trim() : raw);
-    input.addEventListener('input', (e) => applyValue(e.target.value));
-    if (options.autoZero) {
-      input.addEventListener('blur', () => {
-        if (!input.value.trim()) {
-          input.value = '0';
-          applyValue('0');
-        }
-      });
+    if (options.disabled) input.disabled = true;
+    if (!options.disabled) {
+      input.addEventListener('input', (e) => applyValue(e.target.value));
+      if (options.autoZero) {
+        input.addEventListener('blur', () => {
+          if (!input.value.trim()) {
+            input.value = '0';
+            applyValue('0');
+          }
+        });
+      }
     }
     return input;
   }
@@ -1032,18 +1037,23 @@
     state.logicTests = cloneRecord(snapshot.logicTests);
 
     if (snapshot.program && Array.isArray(snapshot.program.lines)) {
-      state.programLines = snapshot.program.lines.map((line, index) => ({
-        id: line.id ?? index + 1,
-        label: line.label || String(line.id ?? index + 1),
-        kind: line.kind === 'faça' ? 'faça' : 'se',
-        condReg: line.condReg || '',
-        condTest: line.condTest || '',
-        actionOp: line.actionOp || '',
-        actionValue: line.actionValue !== undefined ? String(line.actionValue) : '1',
-        thenGoto: line.thenGoto || '',
-        elseGoto: line.elseGoto || ''
-      }));
+      state.programLines = snapshot.program.lines.map((line, index) => {
+        const kind = line.kind === 'faça' ? 'faça' : 'se';
+        const actionOp = line.actionOp || '';
+        return {
+          id: line.id ?? index + 1,
+          label: line.label || String(line.id ?? index + 1),
+          kind,
+          condReg: line.condReg || '',
+          condTest: line.condTest || '',
+          actionOp,
+          actionValue: kind === 'faça' ? getStaticActionValue(actionOp) : '1',
+          thenGoto: line.thenGoto || '',
+          elseGoto: line.elseGoto || ''
+        };
+      });
     }
+
     updateRegisters();
   }
 
